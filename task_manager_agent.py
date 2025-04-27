@@ -56,6 +56,9 @@ class TweetRequest(Model):
     access_token_secret: str
     text: str
 
+class StripeChargeRequest(Model):
+    email: str
+
 def check_time_threshold(task_due: datetime, threshold_hours: float) -> bool:
     """Check if current time is within 10 minutes after a threshold time"""
     now = datetime.now(timezone.utc)
@@ -80,9 +83,10 @@ async def make_call(ctx: Context, phone_number: str, task_name: str, time_left: 
     print(f"Calling {phone_number} about task '{task_name}' due in {time_left}")
     await ctx.send('agent1qgap4rk8dnvhez4fcaxc4za2337scadkfc7frd3v2s2tc44aw2d8cejydw9', CallRequest(phone_number=phone_number,task=task_name,time_remaining=time_left))
 
-async def charge_user(ctx: Context, phone_number: str, task_name: str, days_late: float):
+async def charge_user(ctx: Context, email: str):
     """Placeholder for charging users"""
     print(f"Charging {phone_number} for task '{task_name}' - {days_late:.1f} days late")
+    await ctx.send('agent1q0ytn0q5lc6zm72288zewe8untpgutdjnjams00wwatdqnq6w9xgy69lstg', StripeChargeRequest(email=email))
 
 async def force_tweet(ctx: Context, access_token: str, access_token_secret: str, task_name: str):
     """Placeholder for forcing tweets"""
@@ -132,7 +136,7 @@ async def check_tasks(ctx: Context):
                         # Charge every 24 hours (every 2 periods)
                         if periods_passed % 2 == 0:
                             days_late = (periods_passed * 12) / 24
-                            await charge_user(ctx, user['phone'], task['description'], days_late)
+                            await charge_user(ctx, user['email'])
                         
                         # Force tweet every 12 hours
                         #hours_late = periods_passed * 12
