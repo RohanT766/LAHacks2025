@@ -62,6 +62,9 @@ class TwitterRequest(BaseModel):
     access_token_secret: str
     tweet: str
 
+class StripeChargeRequest(BaseModel):
+    email: str
+
 @app.get("/", response_class=HTMLResponse)
 async def index_page():
     return {"message": "Twilio Media Stream Server is running!"}
@@ -256,6 +259,40 @@ async def post_to_twitter(request: TwitterRequest):
     resp = client.create_tweet(text=request.tweet)
     print(f"Successfully posted tweet! Tweet ID: {resp.data['id']}")
     return True
+
+@app.post("/charge")
+async def charge_customer(request: StripeChargeRequest):
+    import stripe
+    STRIPE_KEY = os.getenv("STRIPE_KEY")
+    stripe.api_key = STRIPE_KEY
+
+    try:
+        customers = stripe.Customer.list(
+            email=request.email,
+            limit=1
+        )
+        if not customers.data:
+            return {"success": False, "error": "Customer not found"}
+
+        customer = customers.data[0]
+        payment_methods = stripe.PaymentMethod.list(
+            customer=customer.id,
+            type="card"
+        )
+        if not payment_methods.data:
+            return {"success": False, "error": "No payment method found for customer"}
+
+        payment_intent = stripe.PaymentIntent.create(
+            amount=1000,  # $10.00 in cents
+            currency="usd",
+            customer=customer.id,
+            payment_method=payment_methods.data[0].id,
+            off_session=True,
+            confirm=True
+        )
+        return {"success": True, "payment_intent": payment_intent}
+    except stripe.error.StripeError as e:
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
