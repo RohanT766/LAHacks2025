@@ -7,8 +7,9 @@ import {
   Pressable,
   Keyboard,
   TouchableWithoutFeedback,
+  Platform,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // Set global default Text props
 if (Text.defaultProps == null) Text.defaultProps = {};
@@ -21,52 +22,95 @@ export default function CreateHabit({ navigation, route }) {
   const [intervalType, setIntervalType] = useState('days');
   const [startDate, setStartDate] = useState(new Date());
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (event.type === 'dismissed') return;
-    const currentDate = selectedDate || startDate;
-    setStartDate(currentDate);
+  const onChangeDate = (event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (selectedDate) {
+      const newDate = new Date(startDate);
+      newDate.setFullYear(selectedDate.getFullYear());
+      newDate.setMonth(selectedDate.getMonth());
+      newDate.setDate(selectedDate.getDate());
+      setStartDate(newDate);
+    }
+  };
+
+  const onChangeTime = (event, selectedTime) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    if (selectedTime) {
+      const newDate = new Date(startDate);
+      newDate.setHours(selectedTime.getHours());
+      newDate.setMinutes(selectedTime.getMinutes());
+      setStartDate(newDate);
+    }
+  };
+
+  const handleDatePress = () => {
+    setShowTimePicker(false);
+    setShowDatePicker(!showDatePicker);
+  };
+
+  const handleTimePress = () => {
+    setShowDatePicker(false);
+    setShowTimePicker(!showTimePicker);
   };
 
   function formatDate(date) {
-  const options = { month: 'short', day: 'numeric' };
-  return date.toLocaleDateString('en-US', options);
-}
-
-function isToday(date) {
-  const today = new Date();
-  return date.toDateString() === today.toDateString();
-}
-
-function isTomorrow(date) {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return date.toDateString() === tomorrow.toDateString();
-}
-
-const handleCreateHabit = () => {
-  let dueLabel = formatDate(startDate);
-  let color = 'green';
-
-  if (isToday(startDate)) {
-    dueLabel = 'today';
-    color = 'red';
-  } else if (isTomorrow(startDate)) {
-    dueLabel = 'tomorrow';
-    color = 'orange';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
   }
 
-  const newHabit = {
-    id: Math.random().toString(),
-    text: habit,
-    due: dueLabel,
-    color: color,
-    completed: false,
-  };
+  function formatTime(date) {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
 
-  route.params.addTask(newHabit);
-  navigation.goBack();
-};
+  function isToday(date) {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  }
+
+  function isTomorrow(date) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return date.toDateString() === tomorrow.toDateString();
+  }
+
+  const handleCreateHabit = () => {
+    let dueLabel = formatDate(startDate);
+    let color = 'green';
+
+    if (isToday(startDate)) {
+      dueLabel = 'today';
+      color = 'red';
+    } else if (isTomorrow(startDate)) {
+      dueLabel = 'tomorrow';
+      color = 'orange';
+    }
+
+    const newHabit = {
+      id: Math.random().toString(),
+      text: habit,
+      due: dueLabel,
+      time: formatTime(startDate),
+      color: color,
+      completed: false,
+    };
+
+    route.params.addTask(newHabit);
+    navigation.goBack();
+  };
 
   return (
     <TouchableWithoutFeedback
@@ -93,7 +137,7 @@ const handleCreateHabit = () => {
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>every </Text>
             <TextInput
-              style={[styles.subtitle, styles.input, { width: 60 }]}
+              style={[styles.subtitle, styles.input, { width: 60, marginRight: 8 }]}
               value={frequency}
               onChangeText={setFrequency}
               placeholder="0"
@@ -124,18 +168,48 @@ const handleCreateHabit = () => {
             </View>
           </View>
 
-          {/* Start Date */}
+          {/* Start Date and Time */}
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>starting from</Text>
+            <View style={styles.dateTimeContainer}>
+              <Pressable
+                style={styles.dateButton}
+                onPress={handleDatePress}
+              >
+                <Text style={styles.dateButtonText}>{formatDate(startDate)}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.timeButton}
+                onPress={handleTimePress}
+              >
+                <Text style={styles.timeButtonText}>{formatTime(startDate)}</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {showDatePicker && (
             <DateTimePicker
               value={startDate}
               mode="date"
-              display="default"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={onChangeDate}
-              style={{ marginTop: 10 }}
               textColor="black"
+              themeVariant="light"
+              style={{ marginLeft: -24 }}
             />
-          </View>
+          )}
+
+          {showTimePicker && (
+            <DateTimePicker
+              value={startDate}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onChangeTime}
+              textColor="black"
+              themeVariant="light"
+              style={{ marginLeft: -24 }}
+            />
+          )}
         </View>
 
         {/* Fixed Button */}

@@ -239,14 +239,9 @@ async def twitter_callback(request: Request):
 
     user_obj_id = existing["_id"]
 
-    return HTMLResponse(f"""
-      <html>
-        <body>
-          ✅ Logged in as @{screen_name}<br/>
-          Your internal user_id is <code>{user_obj_id}</code>
-        </body>
-      </html>
-    """)
+    deep_link = f"youwontforget://twitter-callback?user_id={user_obj_id}&screen_name={screen_name}"
+
+    return RedirectResponse(deep_link)
 
 # Donation check replaces routines logic
 async def check_and_donate():

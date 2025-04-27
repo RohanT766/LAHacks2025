@@ -7,6 +7,8 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Alert,
+  Linking,               // ← import Linking
+  ActivityIndicator,
 } from 'react-native';
 import styles from './styles';
 
@@ -29,16 +31,20 @@ export default function LoginScreen({ navigation }) {
       if (!resp.ok) {
         Alert.alert('Login failed', payload.detail || 'Check your credentials');
       } else {
-        // Reset stack and go to Home, passing user data
         navigation.reset({
           routes: [{ name: 'Home', params: { user: payload } }],
         });
       }
-    } catch (err) {
+    } catch {
       Alert.alert('Network error', 'Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTwitterLogin = () => {
+    // opens your FastAPI /login/twitter redirect
+    Linking.openURL(`${API_BASE_URL}/login/twitter`);
   };
 
   return (
@@ -52,6 +58,7 @@ export default function LoginScreen({ navigation }) {
             </Text>
           </View>
 
+          {/* Email */}
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>Email</Text>
             <TextInput
@@ -61,9 +68,11 @@ export default function LoginScreen({ navigation }) {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder="you@example.com"
+              editable={!loading}
             />
           </View>
 
+          {/* Password */}
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>Password</Text>
             <TextInput
@@ -72,21 +81,54 @@ export default function LoginScreen({ navigation }) {
               onChangeText={setPassword}
               secureTextEntry
               placeholder="••••••••"
+              editable={!loading}
             />
           </View>
 
+          {/* Sign up link */}
           <Pressable
             style={[styles.fixedButton, { backgroundColor: 'transparent', bottom: 150 }]}
-            onPress={() => navigation.reset({ routes: [{ name: 'Signup' }] })}>
+            onPress={() => navigation.reset({ routes: [{ name: 'Signup' }] })}
+            disabled={loading}
+          >
             <Text style={styles.buttonText}>I need to sign up</Text>
           </Pressable>
 
+          {/* Standard email/password login */}
           <Pressable
             style={styles.fixedButton}
             onPress={handleLogin}
-            disabled={loading}>
-            <Text style={styles.buttonText}>
-              {loading ? 'Logging in…' : 'Log in'}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Log in</Text>
+            )}
+          </Pressable>
+
+          {/* ——— Divider ——— */}
+          <View style={{ marginVertical: 16, alignItems: 'center' }}>
+            <Text style={{ color: '#666' }}>or</Text>
+          </View>
+
+          {/* Twitter OAuth login */}
+          <Pressable
+            style={{
+              backgroundColor: '#1DA1F2',
+              padding: 12,
+              borderRadius: 8,
+              marginBottom: 16,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+              opacity: loading ? 0.6 : 1,
+            }}
+            onPress={handleTwitterLogin}
+            disabled={loading}
+          >
+            <Text style={{ color: 'white', fontWeight: '600' }}>
+              Sign in with Twitter
             </Text>
           </Pressable>
         </View>
