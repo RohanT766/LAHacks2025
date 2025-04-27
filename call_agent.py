@@ -62,11 +62,6 @@ async def make_call(ctx: Context):
         except Exception as e:
             ctx.logger.error(f"Error making call: {e}")
 
-        # Log status every 10 seconds
-        for _ in range(30):  # 30 * 10 seconds = 5 minutes
-            ctx.logger.info(f"Agent is active. Time remaining: {time_remaining}")
-            await asyncio.sleep(10)
-
 if __name__ == "__main__":
     agent.run()    
     
