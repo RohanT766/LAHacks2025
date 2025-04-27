@@ -5,6 +5,8 @@ import styles from './styles'; // shared styling
 import { getUserTasks } from './api';
 import * as ImagePicker from 'expo-image-picker';
 
+const API_BASE_URL = 'http://localhost:8000';
+
 // Get current date information
 const today = new Date();
 const currentDay = today.getDay(); // 0-6 (Sunday-Saturday)
@@ -197,15 +199,16 @@ export default function Home({ navigation, route }) {
 
   const handleTaskPress = async (task) => {
     try {
-      // Request camera permissions
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      // Request media library permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera permissions to verify tasks');
+        Alert.alert('Permission needed', 'Please grant photo library permissions to verify tasks');
         return;
       }
 
-      // Take a photo
-      const result = await ImagePicker.launchCameraAsync({
+      // Pick an image from the gallery
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.5,
@@ -220,7 +223,7 @@ export default function Home({ navigation, route }) {
       setLoading(true);
 
       // Send photo for verification
-      const response = await fetch('http://localhost:8000/verify-task-photo', {
+      const response = await fetch(`${API_BASE_URL}/verify-task-photo`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -238,10 +241,10 @@ export default function Home({ navigation, route }) {
         // Remove task from local state
         setTasks(prev => prev.filter(t => t.id !== task.id));
         // Navigate to success screen
-        navigation.navigate('ImageRight');
+        navigation.navigate('ImageRight', { photoUri: result.assets[0].uri });
       } else {
         // Navigate to failure screen
-        navigation.navigate('ImageWrong');
+        navigation.navigate('ImageWrong', { photoUri: result.assets[0].uri });
       }
     } catch (error) {
       console.error('Error verifying task:', error);

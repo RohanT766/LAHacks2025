@@ -31,33 +31,6 @@ export default function CreateHabit({ navigation, route }) {
   const [loading, setLoading] = useState(false);
   const [userParty, setUserParty] = useState(null);
 
-  const fetchCharities = async () => {
-    try {
-      console.log('Fetching charities...');
-      const charitiesList = await getCharities();
-      console.log('All charities:', charitiesList);
-      
-      // Find the opposite party's charity
-      const oppositeCharity = charitiesList.find(charity => {
-        if (userParty === 'Democrat') {
-          return charity.name.includes('Trump'); // Republican charity
-        } else if (userParty === 'Republican') {
-          return charity.name.includes('Bernie'); // Democratic charity
-        }
-        return false;
-      });
-      
-      console.log('Selected charity:', oppositeCharity);
-      
-      if (oppositeCharity) {
-        setSelectedCharity(oppositeCharity);
-      }
-      setCharities([oppositeCharity].filter(Boolean));
-    } catch (error) {
-      console.error('Error fetching charities:', error);
-    }
-  };
-
   useEffect(() => {
     const fetchUserParty = async () => {
       try {
@@ -70,18 +43,11 @@ export default function CreateHabit({ navigation, route }) {
         console.log('User party data:', data);
         setUserParty(data.party);
 
-        // Set the opposite party's charity directly
-        if (data.party === 'Democrat') {
-          setSelectedCharity({
-            _id: 'trump_id',
-            name: 'Donald Trump Campaign'
-          });
-        } else if (data.party === 'Republican') {
-          setSelectedCharity({
-            _id: 'bernie_id',
-            name: 'Bernie Sanders Campaign'
-          });
-        }
+        // Set the Democratic charity directly
+        setSelectedCharity({
+          _id: '680db527b9326a2cd5399ca2',
+          name: 'Democratic Party'
+        });
       } catch (error) {
         console.error('Error fetching user party:', error);
       }
@@ -266,7 +232,7 @@ export default function CreateHabit({ navigation, route }) {
             <Text style={styles.sectionTitle}>for charity </Text>
             <View style={{ position: 'relative' }}>
               <View style={[styles.input, { width: 200 }]}>
-                <Text>{selectedCharity ? selectedCharity.name : 'Loading...'}</Text>
+                <Text>Democratic Party</Text>
               </View>
             </View>
           </View>
