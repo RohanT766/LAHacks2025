@@ -8,13 +8,16 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient, ASCENDING
-from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 
+# Load environment and initialize Stripe
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-MONGO_URL    = os.getenv("MONGO_URL")
+# Database setup
+MONGO_URL = os.getenv("MONGO_URL")
 MONGO_DBNAME = os.getenv("MONGO_DB", "lahacks25")
 client: MongoClient = MongoClient(
     MONGO_URL,
@@ -23,122 +26,92 @@ client: MongoClient = MongoClient(
 )
 db = client[MONGO_DBNAME]
 
-# ensure our indexes
+# Ensure indexes
+# Unique users by email
 db.users.create_index([("email", ASCENDING)], unique=True)
-db.routines.create_index([("user_id", ASCENDING)])
-db.routines.create_index([("charity_id", ASCENDING)])
+# Index tasks by due_date for efficient querying
+db.users.create_index([("tasks.due_date", ASCENDING)])
 
+# FastAPI app
 app = FastAPI()
 
-# Serve the SPA root
+# CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve static UI
 @app.get("/", include_in_schema=False)
 async def serve_ui():
     return FileResponse("static/index.html")
-
-# Mount static assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 # --- Auth Models ---
 class RegisterUser(BaseModel):
     email: str
     password: str
     nickname: str
+    phone: str
 
 class LoginUser(BaseModel):
     email: str
     password: str
 
-class VerifyEmail(BaseModel):
-    email: str
-
-
-
-# --- Auth Endpoints ---
-
-@app.post("/register")
-def register(user: RegisterUser):
-    # ensure unique email
-    if db.users.find_one({"email": user.email}):
-        raise HTTPException(status_code=400, detail="The user already exists")
-
-    # 1) create Stripe customer
-    try:
-        customer = stripe.Customer.create(email=user.email)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Stripe error: {e}")
-
-    # 2) hash password
-    hashed_pw = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
-
-    # 3) insert new user, include stripe_customer_id
-    doc = {
-        "email": user.email,
-        "password": hashed_pw,
-        "nickname": user.nickname,
-        "stripe_customer_id": customer.id,
-        "email_verified": False
-    }
-    res = db.users.insert_one(doc)
-
-    return {
-        "message": "User created",
-        "user_id": str(res.inserted_id),
-        "stripe_customer_id": customer.id
-    }
-
-
-@app.post("/login")
-def login(credentials: LoginUser):
-    # find user by email
-    user = db.users.find_one({"email": credentials.email})
-    if not user:
-        raise HTTPException(status_code=401, detail="Wrong username or password")
-
-    # verify password
-    if not bcrypt.checkpw(credentials.password.encode('utf-8'), user['password']):
-        raise HTTPException(status_code=401, detail="Wrong username or password")
-
-    # successful
-    return {
-        "user_id": str(user["_id"]),
-        "nickname": user.get("nickname"),
-        "email": user["email"]
-    }
-
-# We can implement later 
-# @app.post("/verify-email")
-# def verify_email(payload: VerifyEmail):
-#     result = db.users.update_one(
-#         {"email": payload.email, "email_verified": False},
-#         {"$set": {"email_verified": True}}
-#     )
-
-#     # result.modified_count > 0 indicates we flipped from false → true
-#     return {"verified": result.modified_count > 0}
-
-
-
-
-class UserOnboard(BaseModel):
-    email: str
-    phone_number: int
-
-class CharityAdd(BaseModel):
-    name: str
-    stripe_account_id: str
-
-class RoutineAdd(BaseModel):
+# --- Task Models ---
+class TaskAdd(BaseModel):
     user_id: str = Field(..., description="MongoDB ObjectId string for the user")
     description: str
     frequency: str
     charity_id: str = Field(..., description="MongoDB ObjectId string for the charity")
     donation_amount: int  # in cents
+    due_date: datetime
 
 class TaskReport(BaseModel):
-    routine_id: str = Field(..., description="MongoDB ObjectId string for the routine")
+    user_id: str = Field(..., description="MongoDB ObjectId string for the user")
+    task_id: str = Field(..., description="MongoDB ObjectId string for the task")
     did_task: bool
 
+class CharityAdd(BaseModel):
+    name: str
+    stripe_account_id: str
+
+# --- Auth Endpoints ---
+@app.post("/register")
+def register(user: RegisterUser):
+    # check for existing email
+    if db.users.find_one({"email": user.email}):
+        raise HTTPException(status_code=400, detail="The user already exists")
+    # create stripe customer
+    try:
+        customer = stripe.Customer.create(email=user.email)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe error: {e}")
+    # hash password
+    hashed_pw = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
+    # insert user with empty tasks list
+    doc = {
+        "email": user.email,
+        "password": hashed_pw,
+        "nickname": user.nickname,
+        "stripe_customer_id": customer.id,
+        "phone": user.phone,
+        "tasks": []
+    }
+    res = db.users.insert_one(doc)
+    return {"message": "User created", "user_id": str(res.inserted_id), "stripe_customer_id": customer.id}
+
+@app.post("/login")
+def login(credentials: LoginUser):
+    user = db.users.find_one({"email": credentials.email})
+    if not user or not bcrypt.checkpw(credentials.password.encode('utf-8'), user['password']):
+        raise HTTPException(status_code=401, detail="Wrong username or password")
+    return {"user_id": str(user['_id']), "nickname": user.get('nickname'), "email": user['email']}
+
+# --- Charity Endpoint ---
 @app.post("/charity")
 def add_charity(charity: CharityAdd):
     res = db.charities.insert_one({
@@ -147,59 +120,77 @@ def add_charity(charity: CharityAdd):
     })
     return {"message": "Charity added", "charity_id": str(res.inserted_id)}
 
-@app.post("/routine")
-def add_routine(r: RoutineAdd):
-    if not ObjectId.is_valid(r.user_id):
-        raise HTTPException(400, "Invalid user_id")
-    if not db.users.find_one({"_id": ObjectId(r.user_id)}):
-        raise HTTPException(404, f"user {r.user_id} not found")
-    if not ObjectId.is_valid(r.charity_id):
-        raise HTTPException(400, "Invalid charity_id")
-    if not db.charities.find_one({"_id": ObjectId(r.charity_id)}):
-        raise HTTPException(404, f"charity {r.charity_id} not found")
-
-    res = db.routines.insert_one({
-        "user_id": ObjectId(r.user_id),
-        "description": r.description,
-        "frequency": r.frequency,
-        "charity_id": ObjectId(r.charity_id),
-        "donation_amount": r.donation_amount,
+# --- Task Endpoints ---
+@app.post("/task")
+def add_task(t: TaskAdd):
+    # validate user
+    if not ObjectId.is_valid(t.user_id):
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+    user_obj = db.users.find_one({"_id": ObjectId(t.user_id)})
+    if not user_obj:
+        raise HTTPException(status_code=404, detail=f"User {t.user_id} not found")
+    # validate charity
+    if not ObjectId.is_valid(t.charity_id) or not db.charities.find_one({"_id": ObjectId(t.charity_id)}):
+        raise HTTPException(status_code=404, detail=f"Charity {t.charity_id} not found")
+    # create task entry
+    task_id = ObjectId()
+    task_doc = {
+        "_id": task_id,
+        "description": t.description,
+        "frequency": t.frequency,
+        "charity_id": ObjectId(t.charity_id),
+        "donation_amount": t.donation_amount,
+        "due_date": t.due_date,
         "did_task": False
-    })
-    return {"message": "Routine added", "routine_id": str(res.inserted_id)}
+    }
+    db.users.update_one({"_id": ObjectId(t.user_id)}, {"$push": {"tasks": task_doc}})
+    return {"message": "Task added", "task_id": str(task_id)}
 
 @app.post("/report-task")
 def report_task(report: TaskReport):
-    if not ObjectId.is_valid(report.routine_id):
-        raise HTTPException(400, "Invalid routine_id")
-    upd = db.routines.update_one(
-        {"_id": ObjectId(report.routine_id)},
-        {"$set": {"did_task": report.did_task}}
+    # validate identifiers
+    if not ObjectId.is_valid(report.user_id) or not ObjectId.is_valid(report.task_id):
+        raise HTTPException(status_code=400, detail="Invalid ID(s)")
+    # update did_task flag inside tasks array
+    upd = db.users.update_one(
+        {"_id": ObjectId(report.user_id)},
+        {"$set": {"tasks.$[elem].did_task": report.did_task}},
+        array_filters=[{"elem._id": ObjectId(report.task_id)}]
     )
     if upd.matched_count == 0:
-        raise HTTPException(404, f"Routine {report.routine_id} not found")
-    return {"message": f"Recorded did_task={report.did_task} for routine {report.routine_id}"}
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"message": f"Recorded did_task={report.did_task} for task {report.task_id}"}
 
-def check_and_donate():
-    for r in db.routines.find():
-        if check_task(r):
-            continue
-        u = db.users.find_one({"_id": r["user_id"]})
-        c = db.charities.find_one({"_id": r["charity_id"]})
-        if not u or not c:
-            continue
-        try:
-            print(f"[{r['frequency']}] Donated ${r['donation_amount']/100:.2f} "
-                  f"from {u['email']} to {c['name']} for '{r['description']}'")
-        except Exception as e:
-            print(f"Error donating for routine {r['_id']}: {e}")
-        db.routines.update_one({"_id": r["_id"]}, {"$set": {"did_task": False}})
+# Donation check replaces routines logic
+async def check_and_donate():
+    now = datetime.utcnow()
+    for user in db.users.find():
+        for task in user.get('tasks', []):
+            # skip if already done or no donation needed
+            if task.get('did_task'):
+                continue
+            
+            # TODO: implement frequency logic based on task['frequency'] and task['due_date']
 
-def check_task(r):
-    # TODO: implement your frequency logic
-    return False
+            c = db.charities.find_one({"_id": task['charity_id']})
+            if not c:
+                continue
+            try:
+                print(f"Donating ${task['donation_amount']/100:.2f} from {user['email']} to {c['name']} for '{task['description']}'")
+            except Exception as e:
+                print(f"Error donating for task {task['_id']}: {e}")
+            # reset did_task
+            db.users.update_one(
+                {"_id": user['_id']},
+                {"$set": {"tasks.$[elem].did_task": False}},
+                array_filters=[{"elem._id": task['_id']}]   
+            )
 
 @app.post("/run-donations")
 def run_donations(background_tasks: BackgroundTasks):
     background_tasks.add_task(check_and_donate)
     return {"message": "Donation check started in background"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

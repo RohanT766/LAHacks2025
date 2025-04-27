@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "you-wont-forget",
-    "slug": "snack-8a512412-8e8d-496a-9a30-bdb3cf45924b",
+    "slug": "lahacks255",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,6 +23,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a1cdf5e2-9346-4615-8a9d-52823815bb2d"
+      }
+    },
+    "owner": "smolbrainer"
   }
 }

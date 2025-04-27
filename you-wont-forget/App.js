@@ -5,7 +5,6 @@ import Home from './Home';
 import NewHabit from './NewHabit'; 
 import Signup from './Signup';
 import Signin from './Signin';
-import SignupInfo from './SignupInfo';
 import Photo from './Photo';
 import ImageRight from './ImageRight';
 import ImageWrong from './ImageWrong';
@@ -28,7 +27,6 @@ export default function App() {
           component={Signin}
           options={{ title: 'Log in' }}
         />
-        <Stack.Screen name="SignupInfo" component={SignupInfo}/>
         <Stack.Screen
           name="Home" 
           component={Home} 
