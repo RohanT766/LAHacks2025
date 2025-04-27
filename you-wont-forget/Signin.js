@@ -31,20 +31,49 @@ export default function LoginScreen({ navigation }) {
       if (!resp.ok) {
         Alert.alert('Login failed', payload.detail || 'Check your credentials');
       } else {
+        console.log('Login successful, user data:', payload); // Debug log
         navigation.reset({
-          routes: [{ name: 'Home', params: { user: payload } }],
+          routes: [{ 
+            name: 'Home', 
+            params: { 
+              user: {
+                id: payload.user_id,
+                email: payload.email,
+                nickname: payload.nickname
+              }
+            } 
+          }],
         });
       }
-    } catch {
+    } catch (error) {
+      console.error('Login error:', error);
       Alert.alert('Network error', 'Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTwitterLogin = () => {
-    // opens your FastAPI /login/twitter redirect
-    Linking.openURL(`${API_BASE_URL}/login/twitter`);
+  const handleTwitterLogin = async () => {
+    try {
+      // First, get the Twitter OAuth URL
+      const response = await fetch(`${API_BASE_URL}/login/twitter`);
+      if (!response.ok) {
+        throw new Error('Failed to get Twitter login URL');
+      }
+
+      // Open the Twitter login URL in the browser
+      const twitterUrl = response.url;
+      const supported = await Linking.canOpenURL(twitterUrl);
+      
+      if (supported) {
+        await Linking.openURL(twitterUrl);
+      } else {
+        Alert.alert('Error', 'Cannot open Twitter login URL');
+      }
+    } catch (error) {
+      console.error('Twitter login error:', error);
+      Alert.alert('Error', 'Failed to start Twitter login');
+    }
   };
 
   return (

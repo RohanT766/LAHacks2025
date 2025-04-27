@@ -13,6 +13,11 @@ import certifi
 from pymongo import MongoClient, ASCENDING
 from bson import ObjectId
 import tweepy # type: ignore[import]
+from base64 import b64decode
+import io
+from PIL import Image
+import numpy as np
+import cv2
 
 # Load environment and initialize Stripe
 load_dotenv()
@@ -128,7 +133,18 @@ def login(credentials: LoginUser):
         raise HTTPException(status_code=401, detail="Wrong username or password")
     return {"user_id": str(user['_id']), "nickname": user.get('nickname'), "email": user['email']}
 
-# --- Charity Endpoint ---
+# --- Charity Endpoints ---
+@app.get("/charities")
+def get_charities():
+    try:
+        charities = list(db.charities.find({}, {"_id": 1, "name": 1}))
+        # Convert ObjectId to string for JSON serialization
+        for charity in charities:
+            charity["_id"] = str(charity["_id"])
+        return charities
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching charities: {str(e)}")
+
 @app.post("/charity")
 def add_charity(charity: CharityAdd):
     res = db.charities.insert_one({
@@ -140,28 +156,49 @@ def add_charity(charity: CharityAdd):
 # --- Task Endpoints ---
 @app.post("/task")
 def add_task(t: TaskAdd):
-    # validate user
-    if not ObjectId.is_valid(t.user_id):
-        raise HTTPException(status_code=400, detail="Invalid user_id")
-    user_obj = db.users.find_one({"_id": ObjectId(t.user_id)})
-    if not user_obj:
-        raise HTTPException(status_code=404, detail=f"User {t.user_id} not found")
-    # validate charity
-    if not ObjectId.is_valid(t.charity_id) or not db.charities.find_one({"_id": ObjectId(t.charity_id)}):
-        raise HTTPException(status_code=404, detail=f"Charity {t.charity_id} not found")
-    # create task entry
-    task_id = ObjectId()
-    task_doc = {
-        "_id": task_id,
-        "description": t.description,
-        "frequency": t.frequency,
-        "charity_id": ObjectId(t.charity_id),
-        "donation_amount": t.donation_amount,
-        "due_date": t.due_date,
-        "did_task": False
-    }
-    db.users.update_one({"_id": ObjectId(t.user_id)}, {"$push": {"tasks": task_doc}})
-    return {"message": "Task added", "task_id": str(task_id)}
+    try:
+        # validate user
+        if not ObjectId.is_valid(t.user_id):
+            raise HTTPException(status_code=400, detail="Invalid user_id format")
+        
+        user_obj = db.users.find_one({"_id": ObjectId(t.user_id)})
+        if not user_obj:
+            raise HTTPException(status_code=404, detail=f"User {t.user_id} not found")
+        
+        # validate charity
+        if not ObjectId.is_valid(t.charity_id):
+            raise HTTPException(status_code=400, detail="Invalid charity_id format")
+            
+        charity_obj = db.charities.find_one({"_id": ObjectId(t.charity_id)})
+        if not charity_obj:
+            raise HTTPException(status_code=404, detail=f"Charity {t.charity_id} not found")
+        
+        # create task entry
+        task_id = ObjectId()
+        task_doc = {
+            "_id": task_id,
+            "description": t.description,
+            "frequency": t.frequency,
+            "charity_id": ObjectId(t.charity_id),
+            "donation_amount": t.donation_amount,
+            "due_date": t.due_date,
+            "did_task": False
+        }
+        
+        result = db.users.update_one(
+            {"_id": ObjectId(t.user_id)}, 
+            {"$push": {"tasks": task_doc}}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to add task to user")
+            
+        return {"message": "Task added", "task_id": str(task_id)}
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @app.post("/report-task")
 def report_task(report: TaskReport):
@@ -213,13 +250,13 @@ async def twitter_callback(request: Request):
     # Exchange for access tokens
     access_token, access_token_secret = auth.get_access_token(oauth_verifier)
 
-    # Create an API client and fetch the user’s profile
+    # Create an API client and fetch the user's profile
     api = tweepy.API(auth)
-    profile = api.verify_credentials()   # ← here’s the change
+    profile = api.verify_credentials()
     twitter_id  = str(profile.id)
     screen_name = profile.screen_name
 
-    # Upsert into your users collection as before…
+    # Upsert into your users collection
     result = db.users.update_one(
         {"twitter.id": twitter_id},
         {"$set": {
@@ -237,11 +274,85 @@ async def twitter_callback(request: Request):
 
     assert existing is not None
 
-    user_obj_id = existing["_id"]
+    user_obj_id = str(existing["_id"])
 
-    deep_link = f"youwontforget://twitter-callback?user_id={user_obj_id}&screen_name={screen_name}"
+    # Create the redirect URL
+    redirect_url = f"youwontforget://twitter-callback?user_id={user_obj_id}&screen_name={screen_name}"
 
-    return RedirectResponse(deep_link)
+    # Return HTML that will handle the redirect
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Twitter Login Success</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                background-color: #f5f5f5;
+            }}
+            .container {{
+                text-align: center;
+                padding: 20px;
+                background-color: white;
+                border-radius: 10px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            h1 {{
+                color: #1DA1F2;
+                margin-bottom: 20px;
+            }}
+            p {{
+                color: #333;
+                margin-bottom: 20px;
+            }}
+            button {{
+                background-color: #1DA1F2;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+            }}
+            button:hover {{
+                background-color: #1991da;
+            }}
+        </style>
+        <script>
+            // Function to redirect to the app
+            function redirectToApp() {{
+                window.location.href = "{redirect_url}";
+            }}
+
+            // Try to redirect immediately
+            redirectToApp();
+
+            // If immediate redirect fails, show the button
+            window.onload = function() {{
+                setTimeout(function() {{
+                    document.getElementById('redirectButton').style.display = 'block';
+                }}, 1000);
+            }};
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Login Successful!</h1>
+            <p>You've successfully logged in with Twitter.</p>
+            <button id="redirectButton" onclick="redirectToApp()" style="display: none;">Return to App</button>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html_content)
 
 # Donation check replaces routines logic
 async def check_and_donate():
@@ -272,6 +383,93 @@ async def check_and_donate():
 def run_donations(background_tasks: BackgroundTasks):
     background_tasks.add_task(check_and_donate)
     return {"message": "Donation check started in background"}
+
+@app.get("/tasks/{user_id}")
+def get_user_tasks(user_id: str):
+    try:
+        # validate user
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Invalid user_id format")
+        
+        user_obj = db.users.find_one({"_id": ObjectId(user_id)})
+        if not user_obj:
+            raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+        
+        # get tasks
+        tasks = user_obj.get('tasks', [])
+        
+        # convert ObjectIds to strings
+        for task in tasks:
+            task['_id'] = str(task['_id'])
+            task['charity_id'] = str(task['charity_id'])
+        
+        return tasks
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+# Add this model for photo verification
+class PhotoVerification(BaseModel):
+    user_id: str
+    task_id: str
+    photo_data: str  # base64 encoded image
+
+@app.post("/verify-task-photo")
+async def verify_task_photo(verification: PhotoVerification):
+    try:
+        # Validate user and task
+        if not ObjectId.is_valid(verification.user_id) or not ObjectId.is_valid(verification.task_id):
+            raise HTTPException(status_code=400, detail="Invalid user_id or task_id")
+        
+        user = db.users.find_one({"_id": ObjectId(verification.user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Find the task in the user's tasks array
+        task = None
+        for t in user.get('tasks', []):
+            if str(t['_id']) == verification.task_id:
+                task = t
+                break
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # Decode base64 image
+        try:
+            image_data = b64decode(verification.photo_data.split(',')[1])
+            image = Image.open(io.BytesIO(image_data))
+            # Convert to numpy array for OpenCV
+            image_np = np.array(image)
+            # Convert RGB to BGR (OpenCV format)
+            image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid image data: {str(e)}")
+
+        # TODO: Add your image verification logic here
+        # For now, we'll just return True for testing
+        is_valid = True
+
+        if is_valid:
+            # Remove the task from the user's tasks array
+            result = db.users.update_one(
+                {"_id": ObjectId(verification.user_id)},
+                {"$pull": {"tasks": {"_id": ObjectId(verification.task_id)}}}
+            )
+            
+            if result.modified_count == 0:
+                raise HTTPException(status_code=500, detail="Failed to remove task")
+            
+            return {"success": True, "message": "Task verified and removed"}
+        else:
+            return {"success": False, "message": "Photo verification failed"}
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

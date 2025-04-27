@@ -1,6 +1,6 @@
 // App.js
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Linking } from 'react-native';
@@ -17,7 +17,7 @@ const Stack = createStackNavigator();
 
 // Manually declare your custom URL scheme here
 const linking = {
-  prefixes: ['youwontforget://'],  
+  prefixes: ['youwontforget://', 'exp://localhost:19000/--/', 'exp://127.0.0.1:19000/--/'],
   config: {
     screens: {
       Signup: 'signup',
@@ -27,13 +27,13 @@ const linking = {
       Photo: 'photo/:taskId',
       ImageRight: 'imageright',
       ImageWrong: 'imagewrong',
-      Home: {
+      TwitterCallback: {
         path: 'twitter-callback',
         parse: {
           user_id: (user_id) => user_id,
           screen_name: (screen_name) => screen_name,
         },
-      },    
+      },
     },
   },
 };
@@ -82,13 +82,36 @@ export default function App() {
         <Stack.Screen
           name="TwitterCallback"
           component={({ route, navigation }) => {
-            const { user_id, screen_name } = route.params;
+            const { user_id, screen_name } = route.params || {};
+            console.log('Twitter callback received:', { user_id, screen_name });
+            
             React.useEffect(() => {
-              navigation.replace('Home', {
-                user: { id: user_id, twitter: screen_name },
-              });
-            }, []);
-            return <Text>Signing you in…</Text>;
+              if (user_id && screen_name) {
+                navigation.reset({
+                  index: 0,
+                  routes: [
+                    {
+                      name: 'Home',
+                      params: {
+                        user: {
+                          id: user_id,
+                          twitter: screen_name
+                        }
+                      }
+                    }
+                  ]
+                });
+              } else {
+                console.error('Missing user_id or screen_name in Twitter callback');
+                navigation.replace('Signin');
+              }
+            }, [user_id, screen_name]);
+
+            return (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text>Signing you in...</Text>
+              </View>
+            );
           }}
           options={{ title: 'Signing in…' }}
         />

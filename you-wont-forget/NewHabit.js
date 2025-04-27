@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './styles';
 import {
   View,
@@ -8,8 +8,10 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { createTask, getCharities } from './api';
 
 // Set global default Text props
 if (Text.defaultProps == null) Text.defaultProps = {};
@@ -19,11 +21,25 @@ Text.defaultProps.style = { fontSize: 18 };
 export default function CreateHabit({ navigation, route }) {
   const [habit, setHabit] = useState('');
   const [frequency, setFrequency] = useState('');
-  const [intervalType, setIntervalType] = useState('days');
   const [startDate, setStartDate] = useState(new Date());
-  const [showDropdown, setShowDropdown] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [charities, setCharities] = useState([]);
+  const [selectedCharity, setSelectedCharity] = useState(null);
+  const [showCharityDropdown, setShowCharityDropdown] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchCharities = async () => {
+      try {
+        const charitiesList = await getCharities();
+        setCharities(charitiesList);
+      } catch (error) {
+        console.error('Error fetching charities:', error);
+      }
+    };
+    fetchCharities();
+  }, []);
 
   const onChangeDate = (event, selectedDate) => {
     if (Platform.OS === 'android') {
@@ -87,7 +103,22 @@ export default function CreateHabit({ navigation, route }) {
     return date.toDateString() === tomorrow.toDateString();
   }
 
-  const handleCreateHabit = () => {
+  const handleCreateHabit = async () => {
+    if (!selectedCharity) {
+      alert('Please select a charity');
+      return;
+    }
+
+    if (!habit.trim()) {
+      alert('Please enter a habit');
+      return;
+    }
+
+    if (!frequency.trim()) {
+      alert('Please enter a frequency in hours');
+      return;
+    }
+
     let dueLabel = formatDate(startDate);
     let color = 'green';
 
@@ -108,15 +139,48 @@ export default function CreateHabit({ navigation, route }) {
       completed: false,
     };
 
-    route.params.addTask(newHabit);
-    navigation.goBack();
+    // Save to backend
+    try {
+      setLoading(true);
+      const taskData = {
+        user_id: route.params?.userId,
+        description: habit,
+        frequency: `${frequency} hours`,
+        charity_id: selectedCharity._id,
+        donation_amount: 1000, // $10.00 in cents
+        due_date: startDate.toISOString(),
+      };
+
+      console.log('Sending task data:', taskData);
+
+      const response = await createTask(taskData);
+      console.log('Task created successfully:', response);
+      
+      // Update local state
+      route.params.addTask(newHabit);
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving habit:', error);
+      if (error.response) {
+        console.error('Error details:', error.response.data);
+        alert(`Error: ${error.response.data.detail || 'Failed to create habit'}`);
+      } else if (error.message) {
+        console.error('Error message:', error.message);
+        alert(`Error: ${error.message}`);
+      } else {
+        console.error('Unknown error:', error);
+        alert('An unknown error occurred. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <TouchableWithoutFeedback
       onPress={() => {
         Keyboard.dismiss();
-        setShowDropdown(false);
+        setShowCharityDropdown(false);
       }}>
       <View style={styles.container}>
         <View style={styles.content}>
@@ -133,34 +197,40 @@ export default function CreateHabit({ navigation, route }) {
             />
           </View>
 
-          {/* Frequency and Interval */}
+          {/* Frequency Input */}
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>every </Text>
             <TextInput
-              style={[styles.subtitle, styles.input, { width: 60, marginRight: 8 }]}
+              style={[styles.subtitle, styles.input, { width: 100, marginRight: 8 }]}
               value={frequency}
               onChangeText={setFrequency}
               placeholder="0"
               keyboardType="numeric"
             />
+            <Text style={styles.sectionTitle}>hours</Text>
+          </View>
+
+          {/* Charity Selection */}
+          <View style={styles.inlineRow}>
+            <Text style={styles.sectionTitle}>for charity </Text>
             <View style={{ position: 'relative' }}>
               <Pressable
-                style={[styles.input, { width: 100 }]}
-                onPress={() => setShowDropdown(!showDropdown)}>
-                <Text>{intervalType}</Text>
+                style={[styles.input, { width: 200 }]}
+                onPress={() => setShowCharityDropdown(!showCharityDropdown)}>
+                <Text>{selectedCharity ? selectedCharity.name : 'Select a charity'}</Text>
               </Pressable>
 
-              {showDropdown && (
+              {showCharityDropdown && (
                 <View style={styles.dropdown}>
-                  {['days', 'weeks', 'months'].map((option) => (
+                  {charities.map((charity) => (
                     <Pressable
-                      key={option}
+                      key={charity._id}
                       style={styles.dropdownItem}
                       onPress={() => {
-                        setIntervalType(option);
-                        setShowDropdown(false);
+                        setSelectedCharity(charity);
+                        setShowCharityDropdown(false);
                       }}>
-                      <Text style={styles.dropdownItemText}>{option}</Text>
+                      <Text style={styles.dropdownItemText}>{charity.name}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -213,8 +283,15 @@ export default function CreateHabit({ navigation, route }) {
         </View>
 
         {/* Fixed Button */}
-        <Pressable style={styles.fixedButton} onPress={handleCreateHabit}>
-          <Text style={styles.buttonText}>I'll stick to it!</Text>
+        <Pressable 
+          style={[styles.fixedButton, loading && styles.disabledButton]} 
+          onPress={handleCreateHabit}
+          disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>I'll stick to it!</Text>
+          )}
         </Pressable>
       </View>
     </TouchableWithoutFeedback>

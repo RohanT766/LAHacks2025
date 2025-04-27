@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Image, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles from './styles'; // shared styling
+import { getUserTasks } from './api';
+import * as ImagePicker from 'expo-image-picker';
 
 // Get current date information
 const today = new Date();
@@ -67,10 +69,48 @@ const initialTasks = [
   { id: '4', text: 'Shower', due: 'May 19', color: 'green', completed: true },
 ];
 
-export default function Home({ navigation }) {
-  const [tasks, setTasks] = useState(initialTasks);
+export default function Home({ navigation, route }) {
+  const [tasks, setTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [loading, setLoading] = useState(true);
   const calendarScrollViewRef = useRef(null);
+
+  // Fetch tasks when component mounts or user changes
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const userId = route.params?.user?.id;
+        if (!userId) {
+          console.log('No user ID available');
+          setLoading(false);
+          return;
+        }
+
+        console.log('Fetching tasks for user:', userId);
+        const userTasks = await getUserTasks(userId);
+        console.log('Fetched tasks:', userTasks);
+
+        // Transform tasks to match the UI format
+        const transformedTasks = userTasks.map(task => ({
+          id: task._id,
+          text: task.description,
+          due: formatDate(new Date(task.due_date)),
+          color: 'green', // You might want to calculate this based on due date
+          completed: task.did_task,
+          photo: false, // You might want to add this field to your tasks
+        }));
+
+        setTasks(transformedTasks);
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+        Alert.alert('Error', 'Failed to load tasks. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTasks();
+  }, [route.params?.user?.id]);
 
   // Scroll to current date when component mounts
   useEffect(() => {
@@ -83,6 +123,11 @@ export default function Home({ navigation }) {
       });
     }, 100);
   }, []);
+
+  // Add debug logging for user data
+  useEffect(() => {
+    console.log('Home screen user data:', route.params?.user);
+  }, [route.params?.user]);
 
   const toggleTask = (id) => {
     setTasks((prev) =>
@@ -150,17 +195,67 @@ export default function Home({ navigation }) {
     );
   };
 
+  const handleTaskPress = async (task) => {
+    try {
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera permissions to verify tasks');
+        return;
+      }
+
+      // Take a photo
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+        base64: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      // Show loading state
+      setLoading(true);
+
+      // Send photo for verification
+      const response = await fetch('http://localhost:8000/verify-task-photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: route.params?.user?.id,
+          task_id: task.id,
+          photo_data: result.assets[0].base64,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove task from local state
+        setTasks(prev => prev.filter(t => t.id !== task.id));
+        // Navigate to success screen
+        navigation.navigate('ImageRight');
+      } else {
+        // Navigate to failure screen
+        navigation.navigate('ImageWrong');
+      }
+    } catch (error) {
+      console.error('Error verifying task:', error);
+      Alert.alert('Error', 'Failed to verify task. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderTask = (task) => (
     <View key={task.id}>
       <Pressable
         style={styles.taskContainer}
-        onPress={() => {
-          if (task.photo) {
-            navigation.navigate('Photo', { taskId: task.id });
-          } else {
-            toggleTask(task.id);
-          }
-        }}
+        onPress={() => handleTaskPress(task)}
       >
         <View
           style={[
@@ -188,20 +283,12 @@ export default function Home({ navigation }) {
         }}>
           <Text style={styles.taskText}>{task.text}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {task.photo && (
-              <Ionicons
-                name="camera"
-                size={24}
-                color="gray"
-                style={{ marginLeft: 8 }}
-              />
-            )}
-            <Pressable
-              onPress={() => deleteTask(task.id)}
+            <Ionicons
+              name="camera"
+              size={24}
+              color="gray"
               style={{ marginLeft: 8 }}
-            >
-              <Ionicons name="remove-circle" size={20} color="gray" />
-            </Pressable>
+            />
           </View>
         </View>
       </Pressable>
@@ -276,42 +363,59 @@ export default function Home({ navigation }) {
 
       {/* Task List */}
       <View style={styles.taskSectionContainer}>
-        <ScrollView style={styles.taskSection}>
-          {/* Today */}
-          {todayTasks.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Due Today:</Text>
-              {todayTasks.map(renderTask)}
-            </>
-          )}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0000ff" />
+          </View>
+        ) : (
+          <ScrollView style={styles.taskSection}>
+            {/* Today */}
+            {todayTasks.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Due Today:</Text>
+                {todayTasks.map(renderTask)}
+              </>
+            )}
 
-          {/* Tomorrow */}
-          {tomorrowTasks.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Due Tomorrow:</Text>
-              {tomorrowTasks.map(renderTask)}
-            </>
-          )}
+            {/* Tomorrow */}
+            {tomorrowTasks.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Due Tomorrow:</Text>
+                {tomorrowTasks.map(renderTask)}
+              </>
+            )}
 
-          {/* Future */}
-          {futureTasks.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Future:</Text>
-              {futureTasks.map(renderTask)}
-            </>
-          )}
+            {/* Future */}
+            {futureTasks.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Future:</Text>
+                {futureTasks.map(renderTask)}
+              </>
+            )}
 
-          {/* No Tasks Message */}
-          {todayTasks.length === 0 && tomorrowTasks.length === 0 && futureTasks.length === 0 && (
-            <Text style={styles.noTasksText}>No tasks for this day</Text>
-          )}
-        </ScrollView>
+            {/* No Tasks Message */}
+            {todayTasks.length === 0 && tomorrowTasks.length === 0 && futureTasks.length === 0 && (
+              <Text style={styles.noTasksText}>No tasks for this day</Text>
+            )}
+          </ScrollView>
+        )}
       </View>
 
-      {/* Floating + Button */}
+      {/* Floating Action Button */}
       <Pressable
         style={styles.fab}
-        onPress={() => navigation.navigate('NewHabit', { addTask })}
+        onPress={() => {
+          const userId = route.params?.user?.id;
+          console.log('Navigating to NewHabit with userId:', userId);
+          if (!userId) {
+            Alert.alert('Error', 'Please log in again to create a habit');
+            return;
+          }
+          navigation.navigate('NewHabit', { 
+            userId: userId,
+            addTask: addTask 
+          });
+        }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Ionicons name="add" size={20} color="white" />
