@@ -31,7 +31,8 @@ async def startup(ctx: Context):
     ctx.logger.info("Call agent started")
     await make_call(ctx)
 
-async def make_call(ctx: Context):
+@agent.on_message(model=CallRequest, replies=set())
+async def make_call(ctx: Context, msg: CallRequest):
     """Make a call using the OpenAI endpoint"""
     while True:
         time_left = end_time - datetime.now()
@@ -46,9 +47,9 @@ async def make_call(ctx: Context):
 
         # Create call request
         request_data = {
-            "phone_number": "+16476872539",
-            "task": "Complete your project",
-            "time_remaining": time_remaining
+            "phone_number": CallRequest.phone_number,
+            "task": CallRequest.task,
+            "time_remaining": CallRequest.time_remaining
         }
 
         try:
