@@ -11,6 +11,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { registerUser } from './api'; // Import the API service
+const API_BASE_URL = 'http://localhost:8000';  // or wherever your FastAPI is running
 import styles from './styles';
 
 // Set global default Text props
@@ -162,14 +163,26 @@ export default function CreateProfile({ navigation }) {
           </Pressable>
 
           <Pressable
-            style={{ backgroundColor: 'black', padding: 12, borderRadius: 8, marginBottom: 16 }}
+            style={{
+              backgroundColor: '#1DA1F2',  // Twitter blue
+              padding: 12,
+              borderRadius: 8,
+              marginBottom: 16,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
             onPress={() => {
-              Linking.openURL('https://api.twitter.com/oauth/authorize?client_id=YOUR_CLIENT_ID');
+              // This will open your FastAPI redirect endpoint in the device's browser
+              Linking.openURL(`${API_BASE_URL}/login/twitter`);
             }}
             disabled={isLoading}
           >
-            <Text style={{ color: 'white', textAlign: 'center' }}>Link Twitter account</Text>
+            <Text style={{ color: 'white', fontWeight: '600', textAlign: 'center' }}>
+              Log in with Twitter
+            </Text>
           </Pressable>
+
 
           {/* Navigation */}
           <Pressable

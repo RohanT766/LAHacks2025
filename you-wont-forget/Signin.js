@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import styles from './styles';
-
 import {
   View,
   Text,
@@ -8,25 +6,44 @@ import {
   Pressable,
   Keyboard,
   TouchableWithoutFeedback,
-  Linking,
+  Alert,
 } from 'react-native';
+import styles from './styles';
 
-// Set global default Text props
-if (Text.defaultProps == null) Text.defaultProps = {};
-Text.defaultProps.allowFontScaling = false;
-Text.defaultProps.style = { fontSize: 18 };
+const API_BASE_URL = 'http://localhost:8000'; // adjust if needed
 
-export default function CreateProfile({ navigation }) {
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
+export default function LoginScreen({ navigation }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    setLoading(true);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const payload = await resp.json();
+      if (!resp.ok) {
+        Alert.alert('Login failed', payload.detail || 'Check your credentials');
+      } else {
+        // Reset stack and go to Home, passing user data
+        navigation.reset({
+          routes: [{ name: 'Home', params: { user: payload } }],
+        });
+      }
+    } catch (err) {
+      Alert.alert('Network error', 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <TouchableWithoutFeedback
-      onPress={() => {
-        Keyboard.dismiss();
-      }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
-        {/* Inputs */}
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.title}>Welcome back!</Text>
@@ -36,44 +53,41 @@ export default function CreateProfile({ navigation }) {
           </View>
 
           <View style={styles.inlineRow}>
-            <Text style={styles.sectionTitle}>Phone #</Text>
+            <Text style={styles.sectionTitle}>Email</Text>
             <TextInput
-              style={[
-                styles.subtitle,
-                styles.input,
-                { width: 160, marginLeft: 'auto' },
-              ]}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="1-800-nothing"
-            />
-          </View>
-          
-          {/* password Input */}
-          <View style={styles.inlineRow}>
-            <Text style={styles.sectionTitle}>Code</Text>
-            <TextInput
-              style={[
-                styles.subtitle,
-                styles.input,
-                { width: 160, marginLeft: 'auto' },
-              ]}
-              value={code}
-              onChangeText={setCode}
-              placeholder="Password"
+              style={[styles.subtitle, styles.input, { width: 200, marginLeft: 'auto' }]}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="you@example.com"
             />
           </View>
 
-          {/* Fixed Button */}
+          <View style={styles.inlineRow}>
+            <Text style={styles.sectionTitle}>Password</Text>
+            <TextInput
+              style={[styles.subtitle, styles.input, { width: 200, marginLeft: 'auto' }]}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="••••••••"
+            />
+          </View>
+
           <Pressable
-            style={[styles.fixedButton, {bottom: 150, backgroundColor: 'none'}]}
+            style={[styles.fixedButton, { backgroundColor: 'transparent', bottom: 150 }]}
             onPress={() => navigation.reset({ routes: [{ name: 'Signup' }] })}>
-            <Text style={{size: 18}}>I need to sign up</Text>
+            <Text style={styles.buttonText}>I need to sign up</Text>
           </Pressable>
+
           <Pressable
             style={styles.fixedButton}
-            onPress={() => navigation.reset({ routes: [{ name: 'Home' }] })}>
-            <Text style={styles.buttonText}>Log in</Text>
+            onPress={handleLogin}
+            disabled={loading}>
+            <Text style={styles.buttonText}>
+              {loading ? 'Logging in…' : 'Log in'}
+            </Text>
           </Pressable>
         </View>
       </View>

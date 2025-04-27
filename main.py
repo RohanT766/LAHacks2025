@@ -1,20 +1,27 @@
 import os
 import bcrypt
 import stripe
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
+from datetime import datetime
 from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient, ASCENDING
 from bson import ObjectId
-from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
+import tweepy # type: ignore[import]
 
 # Load environment and initialize Stripe
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+TWITTER_API_KEY       = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET    = os.getenv("TWITTER_API_SECRET")
+TWITTER_CALLBACK_URL  = os.getenv("TWITTER_CALLBACK_URL") 
+SESSION_SECRET = os.getenv("SESSION_SECRET")
 
 # Database setup
 MONGO_URL = os.getenv("MONGO_URL")
@@ -35,13 +42,22 @@ db.users.create_index([("tasks.due_date", ASCENDING)])
 # FastAPI app
 app = FastAPI()
 
-# CORS for frontend
+# 1) CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# 2) Sessions middleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,        # ← required
+    session_cookie="session",         # ← optional
+    max_age=14 * 24 * 3600,           # ← optional
+    same_site="lax",                  # ← optional
 )
 
 # Serve static UI
@@ -49,6 +65,7 @@ app.add_middleware(
 async def serve_ui():
     return FileResponse("static/index.html")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # --- Auth Models ---
 class RegisterUser(BaseModel):
@@ -160,6 +177,76 @@ def report_task(report: TaskReport):
     if upd.matched_count == 0:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"message": f"Recorded did_task={report.did_task} for task {report.task_id}"}
+
+@app.get("/login/twitter")
+async def twitter_login(request: Request):
+    auth = tweepy.OAuth1UserHandler(
+        TWITTER_API_KEY,
+        TWITTER_API_SECRET,
+        callback=TWITTER_CALLBACK_URL
+    )
+    try:
+        redirect_url = auth.get_authorization_url()
+    except Exception as e:
+        raise HTTPException(500, f"Twitter OAuth init failed: {e}")
+    request.session["request_token_secret"] = auth.request_token["oauth_token_secret"]
+    return RedirectResponse(redirect_url)
+
+@app.get("/callback/twitter")
+async def twitter_callback(request: Request):
+    oauth_token    = request.query_params.get("oauth_token")
+    oauth_verifier = request.query_params.get("oauth_verifier")
+    if not oauth_token or not oauth_verifier:
+        raise HTTPException(400, "Missing oauth_token or oauth_verifier")
+
+    # Re-create handler with the saved request token secret
+    auth = tweepy.OAuth1UserHandler(
+        TWITTER_API_KEY,
+        TWITTER_API_SECRET,
+        callback=TWITTER_CALLBACK_URL
+    )
+    auth.request_token = {
+        "oauth_token": oauth_token,
+        "oauth_token_secret": request.session.pop("request_token_secret", None)
+    }
+
+    # Exchange for access tokens
+    access_token, access_token_secret = auth.get_access_token(oauth_verifier)
+
+    # Create an API client and fetch the user’s profile
+    api = tweepy.API(auth)
+    profile = api.verify_credentials()   # ← here’s the change
+    twitter_id  = str(profile.id)
+    screen_name = profile.screen_name
+
+    # Upsert into your users collection as before…
+    result = db.users.update_one(
+        {"twitter.id": twitter_id},
+        {"$set": {
+            "twitter.id": twitter_id,
+            "twitter.screen_name": screen_name,
+            "twitter.access_token": access_token,
+            "twitter.access_token_secret": access_token_secret,
+        }},
+        upsert=True
+    )
+
+    existing = db.users.find_one({"twitter.id": twitter_id})
+    if existing is None:
+        raise HTTPException(500, "Failed to look up existing Twitter user")
+
+    assert existing is not None
+
+    user_obj_id = existing["_id"]
+
+    return HTMLResponse(f"""
+      <html>
+        <body>
+          ✅ Logged in as @{screen_name}<br/>
+          Your internal user_id is <code>{user_obj_id}</code>
+        </body>
+      </html>
+    """)
 
 # Donation check replaces routines logic
 async def check_and_donate():
