@@ -249,3 +249,53 @@ export const getUserTasks = async (userId) => {
     throw error;
   }
 };
+
+/**
+ * Update user's Twitter credentials
+ * @param {Object} data - Twitter update data
+ * @param {string} data.user_id - User's ID
+ * @param {Object} data.twitter - Twitter credentials object
+ * @returns {Promise<Object>} Update response
+ */
+export const updateTwitter = async (data) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/update-twitter`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      let errorMessage;
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || JSON.stringify(errorData);
+        } catch (parseError) {
+          errorMessage = `Error ${response.status}: Could not parse error response`;
+        }
+      } else {
+        try {
+          errorMessage = await response.text();
+        } catch (textError) {
+          errorMessage = `Error ${response.status}: ${response.statusText}`;
+        }
+      }
+
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      throw error;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error;
+  }
+};
