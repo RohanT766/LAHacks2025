@@ -1,8 +1,10 @@
 import os
-import bcrypt
-import stripe
+import io
+import base64
+import tempfile
+
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -12,67 +14,54 @@ from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient, ASCENDING
 from bson import ObjectId
-import tweepy # type: ignore[import]
-from base64 import b64decode
-import io
+import bcrypt
+import stripe
+import tweepy  # type: ignore[import]
 from PIL import Image
 import numpy as np
 import cv2
 
-# Load environment and initialize Stripe
+# Load environment
 load_dotenv()
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key       = os.getenv("STRIPE_SECRET_KEY")
+TWITTER_API_KEY      = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET   = os.getenv("TWITTER_API_SECRET")
+TWITTER_CALLBACK_URL = os.getenv("TWITTER_CALLBACK_URL")
+SESSION_SECRET       = os.getenv("SESSION_SECRET")
 
-TWITTER_API_KEY       = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET    = os.getenv("TWITTER_API_SECRET")
-TWITTER_CALLBACK_URL  = os.getenv("TWITTER_CALLBACK_URL") 
-SESSION_SECRET = os.getenv("SESSION_SECRET")
-
-# Database setup
-MONGO_URL = os.getenv("MONGO_URL")
+# MongoDB
+MONGO_URL    = os.getenv("MONGO_URL")
 MONGO_DBNAME = os.getenv("MONGO_DB", "lahacks25")
-client: MongoClient = MongoClient(
-    MONGO_URL,
-    tls=True,
-    tlsCAFile=certifi.where()
-)
-db = client[MONGO_DBNAME]
+client       = MongoClient(MONGO_URL, tls=True, tlsCAFile=certifi.where())
+db           = client[MONGO_DBNAME]
 
 # Ensure indexes
-# Unique users by email
 db.users.create_index([("email", ASCENDING)], unique=True)
-# Index tasks by due_date for efficient querying
 db.users.create_index([("tasks.due_date", ASCENDING)])
 
-# FastAPI app
+# FastAPI setup
 app = FastAPI()
-
-# 1) CORS middleware
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
+)
+app.add_middleware(
+    SessionMiddleware, secret_key=SESSION_SECRET,
+    session_cookie="session", max_age=14*24*3600, same_site="lax"
 )
 
-# 2) Sessions middleware
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=SESSION_SECRET,        # ← required
-    session_cookie="session",         # ← optional
-    max_age=14 * 24 * 3600,           # ← optional
-    same_site="lax",                  # ← optional
-)
-
-# Serve static UI
+# Serve UI
 @app.get("/", include_in_schema=False)
-async def serve_ui():
+def serve_ui():
     return FileResponse("static/index.html")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Models
+class PhotoVerification(BaseModel):
+    user_id: str
+    task_id: str
+    photo_data: str  # Data URI (base64)
 
-# --- Auth Models ---
 class RegisterUser(BaseModel):
     email: str
     password: str
@@ -410,66 +399,27 @@ def get_user_tasks(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
-# Add this model for photo verification
-class PhotoVerification(BaseModel):
-    user_id: str
-    task_id: str
-    photo_data: str  # base64 encoded image
-
 @app.post("/verify-task-photo")
-async def verify_task_photo(verification: PhotoVerification):
+async def verify_task_photo(v: PhotoVerification):
+    # Decode base64 payload to a temp file
     try:
-        # Validate user and task
-        if not ObjectId.is_valid(verification.user_id) or not ObjectId.is_valid(verification.task_id):
-            raise HTTPException(status_code=400, detail="Invalid user_id or task_id")
-        
-        user = db.users.find_one({"_id": ObjectId(verification.user_id)})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Find the task in the user's tasks array
-        task = None
-        for t in user.get('tasks', []):
-            if str(t['_id']) == verification.task_id:
-                task = t
-                break
-        
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+        header, b64 = v.photo_data.split(",", 1)
+        data = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(400, "Invalid photo_data format")
 
-        # Decode base64 image
-        try:
-            image_data = b64decode(verification.photo_data.split(',')[1])
-            image = Image.open(io.BytesIO(image_data))
-            # Convert to numpy array for OpenCV
-            image_np = np.array(image)
-            # Convert RGB to BGR (OpenCV format)
-            image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid image data: {str(e)}")
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
+        tf.write(data)
+        temp_path = tf.name
 
-        # TODO: Add your image verification logic here
-        # For now, we'll just return True for testing
-        is_valid = True
+    # Delegate to the validator
+    from image_validator import validate_task_image
+    valid = validate_task_image(v.user_id, temp_path)
 
-        if is_valid:
-            # Remove the task from the user's tasks array
-            result = db.users.update_one(
-                {"_id": ObjectId(verification.user_id)},
-                {"$pull": {"tasks": {"_id": ObjectId(verification.task_id)}}}
-            )
-            
-            if result.modified_count == 0:
-                raise HTTPException(status_code=500, detail="Failed to remove task")
-            
-            return {"success": True, "message": "Task verified and removed"}
-        else:
-            return {"success": False, "message": "Photo verification failed"}
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    return {
+        "success": valid,
+        "message": "Task verified and removed" if valid else "Photo verification failed"
+    }
 
 if __name__ == "__main__":
     import uvicorn

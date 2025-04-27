@@ -9,3 +9,8 @@ flask==3.0.2
 aiohttp==3.11.18
 requests==2.32.3 
 fastapi>=0.100.0
+bcrypt>=4.0.0
+stripe>=10.0.0
+Pillow>=10.0.0
+numpy>=1.25.0
+opencv-python>=4.8.0
