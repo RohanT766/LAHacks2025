@@ -44,8 +44,8 @@ export default function CreateHabit({ navigation, route }) {
         {/* Fixed Button */}
         <Pressable
           style={styles.fixedButton}
-          onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.buttonText}>Create my first habit</Text>
+          onPress={() => navigation.navigate('SignupInfo', { user: route.params.user })}>
+          <Text style={styles.buttonText}>Continue to Twitter</Text>
         </Pressable>
       </View>
     </TouchableWithoutFeedback>

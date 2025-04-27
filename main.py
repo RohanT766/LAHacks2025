@@ -90,6 +90,11 @@ class CharityAdd(BaseModel):
     name: str
     stripe_account_id: str
 
+# Add this model for party update
+class PartyUpdate(BaseModel):
+    user_id: str
+    party: str
+
 # --- Auth Endpoints ---
 @app.post("/register")
 def register(user: RegisterUser):
@@ -424,6 +429,48 @@ async def verify_task_photo(v: PhotoVerification):
         "success": valid,
         "message": "Task verified and removed" if valid else "Photo verification failed"
     }
+
+@app.post("/update-party")
+def update_party(update: PartyUpdate):
+    try:
+        # Validate user ID
+        if not ObjectId.is_valid(update.user_id):
+            raise HTTPException(status_code=400, detail="Invalid user_id format")
+        
+        # Update user's party in database
+        result = db.users.update_one(
+            {"_id": ObjectId(update.user_id)},
+            {"$set": {"political_party": update.party}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        return {"message": "Party updated successfully"}
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@app.get("/user-party/{user_id}")
+def get_user_party(user_id: str):
+    try:
+        # Validate user ID
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Invalid user_id format")
+        
+        # Get user's party from database
+        user = db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        return {"party": user.get("political_party", "Unknown")}
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

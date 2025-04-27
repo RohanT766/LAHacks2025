@@ -13,6 +13,9 @@ import SignupInfo from './SignupInfo';
 import Photo from './Photo';
 import ImageRight from './ImageRight';
 import ImageWrong from './ImageWrong';
+import PoliDem from './PoliDem';
+import PoliPick from './PoliPick';
+import PoliRep from './PoliRep';
 
 const Stack = createStackNavigator();
 
@@ -29,6 +32,9 @@ const linking = {
       Photo: 'photo/:taskId',
       ImageRight: 'imageright',
       ImageWrong: 'imagewrong',
+      PoliPick: 'poli-pick',
+      PoliDem: 'poli-dem',
+      PoliRep: 'poli-rep',
       TwitterCallback: {
         path: 'twitter-callback',
         parse: {
@@ -58,6 +64,21 @@ export default function App() {
           name="SignupInfo"
           component={SignupInfo}
           options={{ title: 'Complete Setup' }}
+        />
+        <Stack.Screen
+          name="PoliPick"
+          component={PoliPick}
+          options={{ title: 'Political Affiliation' }}
+        />
+        <Stack.Screen
+          name="PoliDem"
+          component={PoliDem}
+          options={{ title: 'Democratic Donation' }}
+        />
+        <Stack.Screen
+          name="PoliRep"
+          component={PoliRep}
+          options={{ title: 'Republican Donation' }}
         />
         <Stack.Screen
           name="Home" 

@@ -45,26 +45,21 @@ export default function SignupInfo({ navigation, route }) {
     }
   };
 
-  const handleSkip = async () => {
-    try {
-      // Navigate to Home with default Twitter credentials
-      navigation.reset({
-        routes: [
-          {
-            name: 'Home',
-            params: {
-              user: {
-                ...user,
-                twitter: DEFAULT_TWITTER
-              }
+  const handleSkip = () => {
+    // Navigate to Home with default Twitter credentials
+    navigation.reset({
+      routes: [
+        {
+          name: 'Home',
+          params: {
+            user: {
+              ...user,
+              twitter: DEFAULT_TWITTER
             }
           }
-        ]
-      });
-    } catch (error) {
-      console.error('Error navigating to Home:', error);
-      Alert.alert('Error', 'Failed to proceed to Home screen');
-    }
+        }
+      ]
+    });
   };
 
   return (

@@ -13,6 +13,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { createTask, getCharities } from './api';
 
+const API_BASE_URL = "http://localhost:8000"
 // Set global default Text props
 if (Text.defaultProps == null) Text.defaultProps = {};
 Text.defaultProps.allowFontScaling = false;
@@ -28,18 +29,68 @@ export default function CreateHabit({ navigation, route }) {
   const [selectedCharity, setSelectedCharity] = useState(null);
   const [showCharityDropdown, setShowCharityDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [userParty, setUserParty] = useState(null);
+
+  const fetchCharities = async () => {
+    try {
+      console.log('Fetching charities...');
+      const charitiesList = await getCharities();
+      console.log('All charities:', charitiesList);
+      
+      // Find the opposite party's charity
+      const oppositeCharity = charitiesList.find(charity => {
+        if (userParty === 'Democrat') {
+          return charity.name.includes('Trump'); // Republican charity
+        } else if (userParty === 'Republican') {
+          return charity.name.includes('Bernie'); // Democratic charity
+        }
+        return false;
+      });
+      
+      console.log('Selected charity:', oppositeCharity);
+      
+      if (oppositeCharity) {
+        setSelectedCharity(oppositeCharity);
+      }
+      setCharities([oppositeCharity].filter(Boolean));
+    } catch (error) {
+      console.error('Error fetching charities:', error);
+    }
+  };
 
   useEffect(() => {
-    const fetchCharities = async () => {
+    const fetchUserParty = async () => {
       try {
-        const charitiesList = await getCharities();
-        setCharities(charitiesList);
+        console.log('Fetching user party for:', route.params?.userId);
+        const response = await fetch(`${API_BASE_URL}/user-party/${route.params?.userId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch user party');
+        }
+        const data = await response.json();
+        console.log('User party data:', data);
+        setUserParty(data.party);
+
+        // Set the opposite party's charity directly
+        if (data.party === 'Democrat') {
+          setSelectedCharity({
+            _id: 'trump_id',
+            name: 'Donald Trump Campaign'
+          });
+        } else if (data.party === 'Republican') {
+          setSelectedCharity({
+            _id: 'bernie_id',
+            name: 'Bernie Sanders Campaign'
+          });
+        }
       } catch (error) {
-        console.error('Error fetching charities:', error);
+        console.error('Error fetching user party:', error);
       }
     };
-    fetchCharities();
-  }, []);
+
+    if (route.params?.userId) {
+      fetchUserParty();
+    }
+  }, [route.params?.userId]);
 
   const onChangeDate = (event, selectedDate) => {
     if (Platform.OS === 'android') {
@@ -214,27 +265,9 @@ export default function CreateHabit({ navigation, route }) {
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>for charity </Text>
             <View style={{ position: 'relative' }}>
-              <Pressable
-                style={[styles.input, { width: 200 }]}
-                onPress={() => setShowCharityDropdown(!showCharityDropdown)}>
-                <Text>{selectedCharity ? selectedCharity.name : 'Select a charity'}</Text>
-              </Pressable>
-
-              {showCharityDropdown && (
-                <View style={styles.dropdown}>
-                  {charities.map((charity) => (
-                    <Pressable
-                      key={charity._id}
-                      style={styles.dropdownItem}
-                      onPress={() => {
-                        setSelectedCharity(charity);
-                        setShowCharityDropdown(false);
-                      }}>
-                      <Text style={styles.dropdownItemText}>{charity.name}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
+              <View style={[styles.input, { width: 200 }]}>
+                <Text>{selectedCharity ? selectedCharity.name : 'Loading...'}</Text>
+              </View>
             </View>
           </View>
 

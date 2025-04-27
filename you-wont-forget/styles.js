@@ -8,6 +8,7 @@ export default StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
+    fontFamily: 'FjallaOne', 
   },
   subtitle: {
     fontSize: 16,
@@ -17,13 +18,40 @@ export default StyleSheet.create({
     marginTop: 20,
     paddingHorizontal: 10,
   },
+  calendarContent: {
+    paddingHorizontal: '25%',
+  },
   dayContainer: {
     alignItems: 'center',
     marginHorizontal: 10,
+    width: 40,
+    height: 72,
+    justifyContent: 'center',
+  },
+  currentDayContainer: {
+    backgroundColor: '#f0f0f0',
+    padding: 8,
+    borderRadius: 12,
+    height: 72,
+  },
+  selectedDayContainer: {
+    backgroundColor: '#fff0f0',
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#eb4731',
+    height: 72,
   },
   dayText: {
     fontWeight: 'bold',
-    marginBottom: 0,
+    marginBottom: 8,
+  },
+  currentDayText: {
+    color: '#eb4731',
+  },
+  selectedDayText: {
+    color: '#eb4731',
+    fontWeight: 'bold',
   },
   dateCircle: {
     width: 32,
@@ -33,14 +61,40 @@ export default StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  currentDateCircle: {
+    backgroundColor: '#eb4731',
+  },
+  selectedDateCircle: {
+    backgroundColor: '#eb4731',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   dateText: {
     fontWeight: 'bold',
   },
+  currentDateText: {
+    color: 'white',
+  },
+  selectedDateText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  noTasksText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
+    marginTop: 20,
+  },
+  taskSectionContainer: {
+    position: 'absolute',
+    top: 220,
+    left: 0,
+    right: 0,
+    bottom: 40,
+  },
   taskSection: {
-    marginTop: 0,
     paddingHorizontal: 20,
     paddingTop: 0,
-    height: 480,
   },
   sectionTitle: {
     fontWeight: 'bold',
@@ -63,12 +117,23 @@ export default StyleSheet.create({
     alignItems: 'center',
   },
   taskText: {
-    //backgroundColor: '#ededed',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    flex: 1,
     fontSize: 18,
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  deadlineText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft:32,
+    marginTop: -4,
+    paddingHorizontal: 12,
+  },
+  dueDateText: {
+    fontSize: 16,
+    color: '#666',
+    paddingHorizontal: 10,
+    paddingBottom: 8,
   },
   fab: {
     position: 'absolute',
@@ -113,14 +178,13 @@ export default StyleSheet.create({
     flexWrap: 'wrap',
   },
   input: {
-    backgroundColor: '#efefef',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    borderRadius: 4,
-    marginHorizontal: 5,
-    minWidth: 30,
-    textAlignVertical: 'center',
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 8,
+    minWidth: 100,
     textAlign: 'left',
+    fontSize: 16,
   },
   fixedButton: {
     position: 'absolute',
@@ -143,7 +207,7 @@ export default StyleSheet.create({
     left: 0,
     width: 100,
     backgroundColor: 'white',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#ccc',
     borderRadius: 8,
     zIndex: 10,
@@ -153,8 +217,8 @@ export default StyleSheet.create({
   dropdownItem: {
     paddingVertical: 12,
     paddingHorizontal: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'left',
+    alignItems: 'left',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
     backgroundColor: 'white',
@@ -162,6 +226,36 @@ export default StyleSheet.create({
   dropdownItemText: {
     fontSize: 18,
     color: 'black',
+    textAlign: 'left',
+  },
+  dateTimeContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'left',
+    justifyContent: 'left',
+  },
+  dateButton: {
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  timeButton: {
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  dateButtonText: {
     textAlign: 'center',
+    fontSize: 16,
+  },
+  timeButtonText: {
+    textAlign: 'center',
+    fontSize: 16,
   },
 });

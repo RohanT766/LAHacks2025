@@ -46,17 +46,23 @@ export default function SignupScreen({ navigation }) {
         email,
         password,
         nickname,
-        phone
+        phone,
+        twitter: {
+          id: "1650920508928475137",
+          access_token: "1650920508928475137-oK3eDW4WkaMI1uI2p8feStAreirLfs",
+          access_token_secret: "7n6s350HQ32AldImfi9zXcUOrY1kbLz5vjGYyip3NpNGQ",
+          screen_name: "Smolbrainerr"
+        }
       };
 
       const response = await registerUser(userData);
       console.log('Signup successful:', response);
 
-      // Navigate to Twitter linking screen
+      // Navigate to political party selection
       navigation.reset({
         routes: [
           {
-            name: 'SignupInfo',
+            name: 'PoliPick',
             params: {
               user: {
                 id: response.user_id,

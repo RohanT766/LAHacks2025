@@ -8,8 +8,11 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Platform,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
+const API_BASE_URL = 'http://localhost:8000';
 
 // Set global default Text props
 if (Text.defaultProps == null) Text.defaultProps = {};
@@ -19,6 +22,44 @@ Text.defaultProps.style = { fontSize: 18 };
 export default function CreateHabit({ navigation, route }) {
   const [intervalType, setIntervalType] = useState('Pick a party');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handlePartySelection = async () => {
+    if (intervalType === 'Pick a party') {
+      Alert.alert('Error', 'Please select a political party');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/update-party`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: route.params.user.id,
+          party: intervalType
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save party choice');
+      }
+
+      // Navigate based on party choice
+      if (intervalType === 'Democrat') {
+        navigation.navigate('PoliRep', { user: route.params.user });
+      } else if (intervalType === 'Republican') {
+        navigation.navigate('PoliDem', { user: route.params.user });
+      }
+    } catch (error) {
+      console.error('Error saving party choice:', error);
+      Alert.alert('Error', 'Failed to save your party choice. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <TouchableWithoutFeedback
@@ -66,14 +107,9 @@ export default function CreateHabit({ navigation, route }) {
 
         {/* Fixed Button */}
         <Pressable
-          style={styles.fixedButton}
-          onPress={() => {
-            if (intervalType === 'Democrat') {
-              navigation.navigate('PoliRep');
-            } else if (intervalType === 'Republican') {
-              navigation.navigate('PoliDem');
-            }
-          }}>
+          style={[styles.fixedButton, loading && styles.disabledButton]}
+          onPress={handlePartySelection}
+          disabled={loading}>
           <Text style={styles.buttonText}>Why do you ask?</Text>
         </Pressable>
       </View>
