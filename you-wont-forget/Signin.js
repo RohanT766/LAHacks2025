@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,22 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import styles from './styles';
+import { loginUser } from './api';
 
 const API_BASE_URL = 'http://localhost:8000'; // adjust if needed
 
-export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState('');
+export default function LoginScreen({ navigation, route }) {
+  const [email, setEmail] = useState(route.params?.email || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Focus password input if email is pre-filled
+  useEffect(() => {
+    if (route.params?.email) {
+      // You might want to add a ref to the password input and focus it here
+      console.log('Email pre-filled:', route.params.email);
+    }
+  }, [route.params?.email]);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -29,9 +38,29 @@ export default function LoginScreen({ navigation }) {
       });
       const payload = await resp.json();
       if (!resp.ok) {
+        if (resp.status === 401) {
+          // Check if user exists
+          const checkUserResp = await fetch(`${API_BASE_URL}/check-user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+          const checkUserData = await checkUserResp.json();
+          
+          if (!checkUserData.exists) {
+            // User doesn't exist, redirect to signup
+            navigation.reset({
+              routes: [{ 
+                name: 'Signup', 
+                params: { email }
+              }],
+            });
+            return;
+          }
+        }
         Alert.alert('Login failed', payload.detail || 'Check your credentials');
       } else {
-        console.log('Login successful, user data:', payload); // Debug log
+        console.log('Login successful, user data:', payload);
         navigation.reset({
           routes: [{ 
             name: 'Home', 

@@ -256,14 +256,19 @@ async def twitter_callback(request: Request):
     twitter_id  = str(profile.id)
     screen_name = profile.screen_name
 
+    # Create Twitter object in the correct format
+    twitter_obj = {
+        "id": twitter_id,
+        "access_token": access_token,
+        "access_token_secret": access_token_secret,
+        "screen_name": screen_name
+    }
+
     # Upsert into your users collection
     result = db.users.update_one(
         {"twitter.id": twitter_id},
         {"$set": {
-            "twitter.id": twitter_id,
-            "twitter.screen_name": screen_name,
-            "twitter.access_token": access_token,
-            "twitter.access_token_secret": access_token_secret,
+            "twitter": twitter_obj
         }},
         upsert=True
     )
@@ -328,18 +333,17 @@ async def twitter_callback(request: Request):
         <script>
             // Function to redirect to the app
             function redirectToApp() {{
+                // Try to open the app directly
                 window.location.href = "{redirect_url}";
+                
+                // If that fails, show the button after a short delay
+                setTimeout(function() {{
+                    document.getElementById('redirectButton').style.display = 'block';
+                }}, 1000);
             }}
 
             // Try to redirect immediately
             redirectToApp();
-
-            // If immediate redirect fails, show the button
-            window.onload = function() {{
-                setTimeout(function() {{
-                    document.getElementById('redirectButton').style.display = 'block';
-                }}, 1000);
-            }};
         </script>
     </head>
     <body>

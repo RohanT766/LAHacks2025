@@ -9,6 +9,7 @@ import Home from './Home';
 import NewHabit from './NewHabit'; 
 import Signup from './Signup';
 import Signin from './Signin';
+import SignupInfo from './SignupInfo';
 import Photo from './Photo';
 import ImageRight from './ImageRight';
 import ImageWrong from './ImageWrong';
@@ -22,6 +23,7 @@ const linking = {
     screens: {
       Signup: 'signup',
       Signin: 'signin',
+      SignupInfo: 'signup-info',
       Home: 'home',
       NewHabit: 'newhabit',
       Photo: 'photo/:taskId',
@@ -41,16 +43,21 @@ const linking = {
 export default function App() {
   return (
     <NavigationContainer linking={linking} fallback={<Text>Loading…</Text>}>
-      <Stack.Navigator initialRouteName="Signup">
+      <Stack.Navigator initialRouteName="Signin">
+        <Stack.Screen
+          name="Signin"
+          component={Signin}
+          options={{ title: 'Log in' }}
+        />
         <Stack.Screen
           name="Signup"
           component={Signup}
           options={{ title: 'Create account' }}
         />
         <Stack.Screen
-          name="Signin"
-          component={Signin}
-          options={{ title: 'Log in' }}
+          name="SignupInfo"
+          component={SignupInfo}
+          options={{ title: 'Complete Setup' }}
         />
         <Stack.Screen
           name="Home" 

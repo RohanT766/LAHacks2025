@@ -6,78 +6,101 @@ import {
   Pressable,
   Keyboard,
   TouchableWithoutFeedback,
-  Linking,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
-import { registerUser } from './api'; // Import the API service
-const API_BASE_URL = 'http://localhost:8000';  // or wherever your FastAPI is running
 import styles from './styles';
+import { registerUser } from './api';
 
-// Set global default Text props
-if (Text.defaultProps == null) Text.defaultProps = {};
-Text.defaultProps.allowFontScaling = false;
-Text.defaultProps.style = { fontSize: 18 };
+const API_BASE_URL = 'http://localhost:8000';
 
-export default function CreateProfile({ navigation }) {
-  const [nickname, setNickname] = useState('');
+export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [nickname, setNickname] = useState('');
   const [phone, setPhone] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSignUp = async () => {
-    Keyboard.dismiss();
-    setError('');
-    
-    // Basic validation
-    if (!email.trim()) {
-      setError('Email is required');
+  const validatePhone = (phoneNumber) => {
+    // Basic phone number validation (10 digits)
+    const phoneRegex = /^\d{10}$/;
+    return phoneRegex.test(phoneNumber.replace(/\D/g, ''));
+  };
+
+  const handleSignup = async () => {
+    // Validate all required fields
+    if (!email || !password || !nickname || !phone) {
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
-    if (!password) {
-      setError('Password is required');
+
+    // Validate phone number format
+    if (!validatePhone(phone)) {
+      Alert.alert('Error', 'Please enter a valid 10-digit phone number');
       return;
     }
-    if (!nickname.trim()) {
-      setError('Name is required');
-      return;
-    }
-    
-    setIsLoading(true);
-    
+
+    setLoading(true);
     try {
-      const userData = { 
-        email: email.trim(), 
-        password, 
-        nickname: nickname.trim(),
-        phone: phone.trim() // Include phone number
+      const userData = {
+        email,
+        password,
+        nickname,
+        phone
       };
+
+      const response = await registerUser(userData);
+      console.log('Signup successful:', response);
+
+      // Navigate to Twitter linking screen
+      navigation.reset({
+        routes: [
+          {
+            name: 'SignupInfo',
+            params: {
+              user: {
+                id: response.user_id,
+                email: email,
+                nickname: nickname
+              }
+            }
+          }
+        ]
+      });
+    } catch (error) {
+      console.error('Signup error:', error);
       
-      const data = await registerUser(userData);
-      
-      console.log('Registration successful:', data);
-      
-      Alert.alert('Success', 'Account created!', [
-        { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) },
-      ]);
-    } catch (err) {
-      console.error('Registration Error:', err);
-      
-      // Provide user-friendly error messages based on status codes
-      if (err.status === 503) {
-        setError('Server is temporarily unavailable. Please try again later.');
-      } else if (err.status === 400 && err.message.includes('already exists')) {
-        setError('This email is already registered. Please try signing in instead.');
-      } else if (err.message.includes('Network request failed')) {
-        setError('Network error. Please check your internet connection and try again.');
+      // Check if the error is due to email already existing
+      if (error.message && error.message.includes('already exists')) {
+        Alert.alert(
+          'Account Exists',
+          'An account with this email already exists. Would you like to log in?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            },
+            {
+              text: 'Log In',
+              onPress: () => {
+                // Navigate to login screen with the email pre-filled
+                navigation.reset({
+                  routes: [
+                    {
+                      name: 'Signin',
+                      params: { email }
+                    }
+                  ]
+                });
+              }
+            }
+          ]
+        );
       } else {
-        // Limit error message length for UI
-        setError(err.message.length > 100 ? err.message.substring(0, 100) + '...' : err.message);
+        Alert.alert('Error', error.message || 'Failed to create account');
       }
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -86,126 +109,83 @@ export default function CreateProfile({ navigation }) {
       <View style={styles.container}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>You Won't Forget</Text>
-            <Text style={[styles.subtitle, { marginBottom: 8 }]}>
-              Welcome to your last habit tracker! Create an account at your own risk.
+            <Text style={styles.title}>Create your account</Text>
+            <Text style={[styles.subtitle, { marginBottom: 16 }]}>
+              Let's get started with your journey
             </Text>
-            {error ? (
-              <Text style={{ color: 'red', marginBottom: 12, textAlign: 'center' }}>
-                {error}
-              </Text>
-            ) : null}
           </View>
 
-          {/* Nickname Input */}
-          <View style={styles.inlineRow}>
-            <Text style={styles.sectionTitle}>Name</Text>
-            <TextInput
-              style={[styles.subtitle, styles.input, { width: 160, marginLeft: 'auto' }]}
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="Lazy bum"
-              editable={!isLoading}
-            />
-          </View>
-
-          {/* Email Input */}
+          {/* Email */}
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>Email</Text>
             <TextInput
               style={[styles.subtitle, styles.input, { width: 200, marginLeft: 'auto' }]}
               value={email}
               onChangeText={setEmail}
-              placeholder="you@example.com"
-              keyboardType="email-address"
               autoCapitalize="none"
-              editable={!isLoading}
+              keyboardType="email-address"
+              placeholder="you@example.com"
+              editable={!loading}
             />
           </View>
 
-          {/* Password Input */}
+          {/* Password */}
           <View style={styles.inlineRow}>
             <Text style={styles.sectionTitle}>Password</Text>
             <TextInput
               style={[styles.subtitle, styles.input, { width: 200, marginLeft: 'auto' }]}
               value={password}
               onChangeText={setPassword}
-              placeholder="••••••••"
               secureTextEntry
-              editable={!isLoading}
+              placeholder="••••••••"
+              editable={!loading}
             />
           </View>
 
-          {/* Phone Input */}
+          {/* Nickname */}
           <View style={styles.inlineRow}>
-            <Text style={styles.sectionTitle}>Phone #</Text>
+            <Text style={styles.sectionTitle}>Nickname</Text>
             <TextInput
-              style={[styles.subtitle, styles.input, { width: 160, marginLeft: 'auto' }]}
+              style={[styles.subtitle, styles.input, { width: 200, marginLeft: 'auto' }]}
+              value={nickname}
+              onChangeText={setNickname}
+              placeholder="Your nickname"
+              editable={!loading}
+            />
+          </View>
+
+          {/* Phone */}
+          <View style={styles.inlineRow}>
+            <Text style={styles.sectionTitle}>Phone</Text>
+            <TextInput
+              style={[styles.subtitle, styles.input, { width: 200, marginLeft: 'auto' }]}
               value={phone}
               onChangeText={setPhone}
-              placeholder="1-800-nothing"
               keyboardType="phone-pad"
-              editable={!isLoading}
+              placeholder="1234567890"
+              editable={!loading}
             />
           </View>
 
-          {/* Link Stripe & Twitter (placeholders) */}
+          {/* Sign in link */}
           <Pressable
-            style={{ backgroundColor: 'black', padding: 12, borderRadius: 8, marginBottom: 16, marginTop: 12 }}
-            onPress={() => {
-              const clientId = 'placeholder';
-              const url = `https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${clientId}&scope=read_write`;
-              Linking.openURL(url);
-            }}
-            disabled={isLoading}
+            style={[styles.fixedButton, { backgroundColor: 'transparent', bottom: 150 }]}
+            onPress={() => navigation.reset({ routes: [{ name: 'Signin' }] })}
+            disabled={loading}
           >
-            <Text style={{ color: 'white', textAlign: 'center' }}>Link Stripe account</Text>
+            <Text style={styles.buttonText}>I already have an account</Text>
           </Pressable>
 
+          {/* Sign up button */}
           <Pressable
-            style={{
-              backgroundColor: '#1DA1F2',  // Twitter blue
-              padding: 12,
-              borderRadius: 8,
-              marginBottom: 16,
-              flexDirection: 'row',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-            onPress={() => {
-              // This will open your FastAPI redirect endpoint in the device's browser
-              Linking.openURL(`${API_BASE_URL}/login/twitter`);
-            }}
-            disabled={isLoading}
+            style={styles.fixedButton}
+            onPress={handleSignup}
+            disabled={loading}
           >
-            <Text style={{ color: 'white', fontWeight: '600', textAlign: 'center' }}>
-              Log in with Twitter
-            </Text>
-          </Pressable>
-
-
-          {/* Navigation */}
-          <Pressable
-            style={[styles.fixedButton, { bottom: 150, backgroundColor: 'transparent' }]}
-            onPress={() => navigation.navigate('Signin')}
-            disabled={isLoading}
-          >
-            <Text style={{ fontSize: 16 }}>I already have an account</Text>
-          </Pressable>
-
-          {/* Sign Up Button */}
-          <Pressable 
-            style={[
-              styles.fixedButton, 
-              isLoading ? { opacity: 0.7 } : null
-            ]} 
-            onPress={handleSignUp}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
+            {loading ? (
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign up</Text>
+              <Text style={styles.buttonText}>Create Account</Text>
             )}
           </Pressable>
         </View>
