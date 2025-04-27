@@ -217,6 +217,17 @@ async def send_session_update(openai_ws):
     print('Sending session update:', json.dumps(session_update))
     await openai_ws.send(json.dumps(session_update))
 
+@app.post("/send-message")
+async def send_message(request: CallRequest):
+   #use the twilio api to send a message to the user
+   client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+   message = client.messages.create(
+       to=request.phone_number,
+       from_=TWILIO_PHONE_NUMBER,
+       body=f'You have {request.time_remaining} to complete your task: {request.task}.'
+   )
+   return {"message": "Message sent"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=PORT)
