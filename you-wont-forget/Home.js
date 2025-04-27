@@ -231,7 +231,7 @@ export default function Home({ navigation, route }) {
         body: JSON.stringify({
           user_id: route.params?.user?.id,
           task_id: task.id,
-          photo_data: result.assets[0].base64,
+          photo_data: `data:image/jpeg;base64,${result.assets[0].base64}`,
         }),
       });
 
