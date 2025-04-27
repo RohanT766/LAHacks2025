@@ -18,7 +18,6 @@ export default function MainNavigator() {
     <Stack.Navigator initialRouteName="Signup" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Signup" component={Signup}  />
       <Stack.Screen name="Signin" component={Signin} />
-      <Stack.Screen name="SignupInfo" component={SignupInfo} />
       <Stack.Screen name="Home" component={Home} />
       <Stack.Screen name="NewHabit" component={NewHabit} />
       <Stack.Screen name="Photo" component={Photo} />

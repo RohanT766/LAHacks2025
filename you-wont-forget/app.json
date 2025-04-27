@@ -1,12 +1,11 @@
 {
   "expo": {
     "name": "you-wont-forget",
-    "slug": "lahacks255",
+    "slug": "snack-f9798c2e-c292-4dcc-a0ba-3309e9a0d519",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "scheme": "youwontforget",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -24,12 +23,6 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "a1cdf5e2-9346-4615-8a9d-52823815bb2d"
-      }
-    },
-    "owner": "smolbrainer"
+    }
   }
 }

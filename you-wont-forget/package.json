@@ -22,7 +22,8 @@
     "@react-native-community/datetimepicker": "8.2.0",
     "@react-navigation/native-stack": "*",
     "expo-camera": "~16.0.18",
-    "@stripe/stripe-react-native": "0.38.6"
+    "@stripe/stripe-react-native": "0.38.6",
+    "expo-font": "~13.0.4"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"
