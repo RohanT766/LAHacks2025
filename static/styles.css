@@ -1,0 +1,24 @@
+body {
+    font-family: sans-serif;
+    margin: 2rem;
+  }
+  button {
+    margin: 0.5rem 0.2rem;
+    padding: 0.4rem 0.8rem;
+  }
+  input {
+    margin: 0.3rem;
+    padding: 0.3rem;
+  }
+  form {
+    margin-top: 1rem;
+  }
+  ul {
+    margin-top: 1rem;
+  }
+  pre {
+    background: #f4f4f4;
+    padding: 1rem;
+    overflow: auto;
+  }
+  

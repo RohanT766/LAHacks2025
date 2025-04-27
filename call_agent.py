@@ -1,51 +1,68 @@
-import asyncio
-import os
-from datetime import datetime
-from dotenv import load_dotenv
-from twilio.rest import Client
-from fetchai.agents import Agent
+"""
+This agent attempts to book a restaurant table by sending requests
+"""
 
-# Load environment variables
+import os
+import asyncio
+import aiohttp
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from uagents import Agent, Context, Model
+from pydantic import Field
+
 load_dotenv()
 
-class CallAgent(Agent):
-    def __init__(self):
-        super().__init__()
-        self.account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-        self.auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-        self.twilio_number = os.getenv('TWILIO_PHONE_NUMBER')
-        self.target_number = os.getenv('TARGET_PHONE_NUMBER')
-        self.client = Client(self.account_sid, self.auth_token)
-        self.call_interval = 300  # 5 minutes in seconds
-        self.twiml_url = "http://localhost:5000/voice"  # Local TwiML server URL
+class CallRequest(Model):
+    phone_number: str = Field(default="+16476872539")  # Placeholder number
+    task: str = Field(default="Complete your project")  # Placeholder task
+    time_remaining: str = Field()
 
-    async def setup(self):
-        """Initialize the agent"""
-        print(f"Call Agent initialized. Will call {self.target_number} every 5 minutes.")
+# Initialize agent
+agent = Agent()
 
-    async def make_call(self):
-        """Make a call using Twilio"""
+# Configuration
+api_url = os.getenv('API_URL', f'{os.getenv('NGROK_URL')}/make-call')
+start_time = datetime.now()
+end_time = start_time + timedelta(hours=1)  # 1 hour timer
+
+@agent.on_event("startup")
+async def startup(ctx: Context):
+    """Initialize the agent and start the timer"""
+    ctx.logger.info("Call agent started")
+    await make_call(ctx)
+
+@agent.on_message(model=CallRequest, replies=set())
+async def make_call(ctx: Context, msg: CallRequest):
+    """Make a call using the OpenAI endpoint"""
+    while True:
+        time_left = end_time - datetime.now()
+        if time_left.total_seconds() <= 0:
+            ctx.logger.info("Timer expired")
+            break
+
+        # Format time remaining
+        hours = int(time_left.total_seconds() // 3600)
+        minutes = int((time_left.total_seconds() % 3600) // 60)
+        time_remaining = f"{hours} hours and {minutes} minutes"
+
+        # Create call request
+        request_data = {
+            "phone_number": CallRequest.phone_number,
+            "task": CallRequest.task,
+            "time_remaining": CallRequest.time_remaining
+        }
+
         try:
-            call = self.client.calls.create(
-                url=self.twiml_url,  # Using our local TwiML server
-                to=self.target_number,
-                from_=self.twilio_number
-            )
-            print(f"[{datetime.now()}] Call initiated: {call.sid}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_url, json=request_data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        ctx.logger.info(f"Call initiated with SID: {result.get('call_sid')}")
+                    else:
+                        ctx.logger.error(f"Failed to make call: {response.status}")
         except Exception as e:
-            print(f"[{datetime.now()}] Error making call: {e}")
-
-    async def run(self):
-        """Main agent loop"""
-        while True:
-            await self.make_call()
-            await asyncio.sleep(self.call_interval)
-
-async def main():
-    # Create and run the agent
-    agent = CallAgent()
-    await agent.setup()
-    await agent.run()
+            ctx.logger.error(f"Error making call: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    agent.run()    
+    

@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "you-wont-forget",
+    "slug": "lahacks255",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a1cdf5e2-9346-4615-8a9d-52823815bb2d"
+      }
+    },
+    "owner": "smolbrainer"
+  }
+}

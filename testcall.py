@@ -16,7 +16,7 @@ client = Client(account_sid, auth_token)
 def call_user(user_phone_number):
     try:
         call = client.calls.create(
-            url='https://your-server.com/voice-instructions',  # XML or dynamic voice URL
+            url='http://localhost:5000/voice',  # Local TwiML server URL
             to=user_phone_number,
             from_=twilio_phone_number
         )
