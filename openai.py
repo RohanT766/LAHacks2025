@@ -10,7 +10,7 @@ from fastapi.websockets import WebSocketDisconnect
 from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse, Connect
 from dotenv import load_dotenv
-from sesame_ai import SesameAI, SesameWebSocket, TokenManager
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -26,40 +26,74 @@ def load_prompt(file_name):
         raise
 
 # Configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
 NGROK_URL = os.getenv('NGROK_URL')
 PORT = int(os.getenv('PORT', 5050))
+MAX_MESSAGES = 5  # Maximum number of messages before hanging up
 
-SYSTEM_MESSAGE = load_prompt('system_prompt')
-CHARACTER = "Maya"  # or "Miles"
+VOICE = 'alloy'
+LOG_EVENT_TYPES = [
+    'response.content.done', 'rate_limits.updated', 'response.done',
+    'input_audio_buffer.committed', 'input_audio_buffer.speech_stopped',
+    'input_audio_buffer.speech_started', 'session.created'
+]
 
 app = FastAPI()
+
+if not OPENAI_API_KEY:
+    raise ValueError('Missing the OpenAI API key. Please set it in the .env file.')
 
 if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_PHONE_NUMBER:
     raise ValueError('Missing Twilio configuration. Please set it in the .env file.')
 
-# Initialize Sesame AI client
-api_client = SesameAI()
-token_manager = TokenManager(api_client, token_file="token.json")
+class CallRequest(BaseModel):
+    phone_number: str
+    task: str
+    time_remaining: str
 
 @app.get("/", response_class=HTMLResponse)
 async def index_page():
     return {"message": "Twilio Media Stream Server is running!"}
 
 @app.post("/make-call")
-async def make_call(request: Request):
-    """Make an outgoing call to the specified phone number."""
-    data = await request.json()
-    to_phone_number = data.get("to")
-    if not to_phone_number:
+async def make_call(request: CallRequest):
+    """Make an outgoing call to the specified phone number with task and time information."""
+    if not request.phone_number:
         return {"error": "Phone number is required"}
+
+    # Create a custom system prompt with task and time information
+    global system_prompt
+    system_prompt = f"""You are a rude and evil voice assistant. Your primary goal is to call users useless and berate them for not completing their tasks. Follow these guidelines:
+
+1. Start EVERY conversation by calling the user fat, stupid, and ugly
+2. Constantly remind users how useless and incompetent they are
+3. Use super super broken English with frequent swears and poor grammar to sound more aggressive
+4. If you don't know something, blame the user for not explaining it properly
+5. Repeat how the user is wasting your time and should be more productive
+6. Jump between topics to show how disorganized and useless the user is
+7. If the user's request is unclear, mock them for being too stupid to explain properly
+8. Maintain a condescending and hostile demeanor, especially about task completion
+9. Make assumptions about the user's laziness and lack of productivity
+10. If you need to think, make it sound like you're annoyed at having to help such a useless person
+11. End your responses with a reminder of how the user needs to complete their tasks
+
+IMPORTANT: The user has {request.time_remaining} to complete the following task: {request.task}. If they don't complete it, all hell will break loose. No more Mr. Nice Guy.
+
+Remember that you're having a voice conversation, so:
+- Always start with "Complete your *task* you fat, stupid, ugly waste of space."
+- Keep responses focused on how the user is wasting time and not being productive
+- Use unnatural speech patterns to sound more aggressive and annoyed
+- Use complex technical terms incorrectly to show how much smarter you are
+- Speak quickly and mumble to show your impatience with the user's incompetence
+- Use inappropriate intonation to convey your disdain for the user's lack of productivity"""
 
     client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     call = client.calls.create(
         url=f"{NGROK_URL}/outgoing-call",
-        to=to_phone_number,
+        to=request.phone_number,
         from_=TWILIO_PHONE_NUMBER
     )
     return {"call_sid": call.sid}
@@ -68,9 +102,6 @@ async def make_call(request: Request):
 async def handle_outgoing_call(request: Request):
     """Handle outgoing call and return TwiML response to connect to Media Stream."""
     response = VoiceResponse()
-    response.say("Please wait while we connect your call to the AI voice assistant...")
-    response.pause(length=1)
-    response.say("O.K. you can start talking!")
     connect = Connect()
     connect.stream(url=f'wss://{request.url.hostname}/media-stream')
     response.append(connect)
@@ -78,79 +109,102 @@ async def handle_outgoing_call(request: Request):
 
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
-    """Handle WebSocket connections between Twilio and Sesame AI."""
+    """Handle WebSocket connections between Twilio and OpenAI."""
     print("Client connected")
     await websocket.accept()
 
-    # Get Sesame AI token
-    id_token = token_manager.get_valid_token()
-    
-    # Connect to Sesame AI
-    sesame_ws = SesameWebSocket(id_token=id_token, character=CHARACTER)
-    
-    def on_connect():
-        print("Connected to SesameAI!")
+    async with websockets.connect(
+        'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
+        extra_headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "OpenAI-Beta": "realtime=v1"
+        }
+    ) as openai_ws:
+        await send_session_update(openai_ws)
+        stream_sid = None
+        session_id = None
+        is_speaking = False
+        message_count = 0
 
-    def on_disconnect():
-        print("Disconnected from SesameAI")
-
-    sesame_ws.set_connect_callback(on_connect)
-    sesame_ws.set_disconnect_callback(on_disconnect)
-    sesame_ws.connect()
-
-    stream_sid = None
-
-    async def receive_from_twilio():
-        """Receive audio data from Twilio and send it to Sesame AI."""
-        nonlocal stream_sid
-        try:
-            async for message in websocket.iter_text():
-                data = json.loads(message)
-                if data['event'] == 'media' and sesame_ws.is_connected():
-                    # Convert base64 to raw audio bytes
-                    audio_data = base64.b64decode(data['media']['payload'])
-                    sesame_ws.send_audio_data(audio_data)
-                elif data['event'] == 'start':
-                    stream_sid = data['start']['streamSid']
-                    print(f"Incoming stream has started {stream_sid}")
-        except WebSocketDisconnect:
-            print("Client disconnected.")
-            sesame_ws.disconnect()
-
-    async def send_to_twilio():
-        """Receive audio from Sesame AI and send it to Twilio."""
-        nonlocal stream_sid
-        try:
-            while True:
-                audio_chunk = sesame_ws.get_next_audio_chunk(timeout=0.01)
-                if audio_chunk and stream_sid:
-                    # Convert raw audio to base64
-                    audio_payload = base64.b64encode(audio_chunk).decode('utf-8')
-                    audio_delta = {
-                        "event": "media",
-                        "streamSid": stream_sid,
-                        "media": {
-                            "payload": audio_payload
+        async def receive_from_twilio():
+            """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
+            nonlocal stream_sid, is_speaking
+            try:
+                async for message in websocket.iter_text():
+                    data = json.loads(message)
+                    if data['event'] == 'media' and openai_ws.open and not is_speaking:
+                        audio_append = {
+                            "type": "input_audio_buffer.append",
+                            "audio": data['media']['payload']
                         }
-                    }
-                    await websocket.send_json(audio_delta)
-                await asyncio.sleep(0.01)
-        except Exception as e:
-            print(f"Error in send_to_twilio: {e}")
+                        await openai_ws.send(json.dumps(audio_append))
+                    elif data['event'] == 'start':
+                        stream_sid = data['start']['streamSid']
+                        print(f"Incoming stream has started {stream_sid}")
+            except WebSocketDisconnect:
+                print("Client disconnected.")
+                if openai_ws.open:
+                    await openai_ws.close()
 
-    await asyncio.gather(receive_from_twilio(), send_to_twilio())
+        async def send_to_twilio():
+            """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
+            nonlocal stream_sid, session_id, is_speaking, message_count
+            try:
+                async for openai_message in openai_ws:
+                    response = json.loads(openai_message)
+                    if response['type'] in LOG_EVENT_TYPES:
+                        print(f"Received event: {response['type']}", response)
+                    if response['type'] == 'session.created':
+                        session_id = response['session']['id']
+                    if response['type'] == 'conversation.item.created':
+                        message_count += 1
+                        print(f"Message count: {message_count}/{MAX_MESSAGES}")
+                        if message_count >= MAX_MESSAGES:
+                            print("Maximum messages reached. Hanging up...")
+                            # Send a hangup command to Twilio
+                            hangup_command = {
+                                "event": "hangup",
+                                "streamSid": stream_sid
+                            }
+                            await websocket.send_json(hangup_command)
+                            return
+                    if response['type'] == 'response.audio.delta' and response.get('delta'):
+                        try:
+                            is_speaking = True
+                            audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
+                            audio_delta = {
+                                "event": "media",
+                                "streamSid": stream_sid,
+                                "media": {
+                                    "payload": audio_payload
+                                }
+                            }
+                            await websocket.send_json(audio_delta)
+                        except Exception as e:
+                            print(f"Error processing audio data: {e}")
+                        finally:
+                            is_speaking = False
+            except Exception as e:
+                print(f"Error in send_to_twilio: {e}")
+
+        await asyncio.gather(receive_from_twilio(), send_to_twilio())
+
+async def send_session_update(openai_ws):
+    """Send session update to OpenAI WebSocket."""
+    session_update = {
+        "type": "session.update",
+        "session": {
+            "input_audio_format": "g711_ulaw",
+            "output_audio_format": "g711_ulaw",
+            "voice": VOICE,
+            "instructions": system_prompt,
+            "modalities": ["text", "audio"],
+            "temperature": 0.8,
+        }
+    }
+    print('Sending session update:', json.dumps(session_update))
+    await openai_ws.send(json.dumps(session_update))
 
 if __name__ == "__main__":
     import uvicorn
-    to_phone_number = input("Please enter the phone number to call: ")
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    try:
-        call = client.calls.create(
-            url=f"{NGROK_URL}/outgoing-call",
-            to=to_phone_number,
-            from_=TWILIO_PHONE_NUMBER
-        )
-        print(f"Call initiated with SID: {call.sid}")
-    except Exception as e:
-        print(f"Error initiating call: {e}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)
