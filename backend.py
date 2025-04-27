@@ -11,6 +11,7 @@ from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse, Connect
 from dotenv import load_dotenv
 from pydantic import BaseModel
+import tweepy
 
 load_dotenv()
 
@@ -30,6 +31,8 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
+TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
+TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
 NGROK_URL = os.getenv('NGROK_URL')
 PORT = int(os.getenv('PORT', 5050))
 MAX_MESSAGES = 5  # Maximum number of messages before hanging up
@@ -53,6 +56,11 @@ class CallRequest(BaseModel):
     phone_number: str
     task: str
     time_remaining: str
+
+class TwitterRequest(BaseModel):
+    access_token: str
+    access_token_secret: str
+    tweet: str
 
 @app.get("/", response_class=HTMLResponse)
 async def index_page():
@@ -227,6 +235,27 @@ async def send_message(request: CallRequest):
        body=f'You have {request.time_remaining} to complete your task: {request.task}.'
    )
    return {"message": "Message sent"}
+
+@app.post("/tweet")
+async def post_to_twitter(request: TwitterRequest):
+    """
+    Post the generated tweet on behalf of a user with their OAuth tokens.
+    Includes a quick sanity check via get_me.
+    """
+    client = tweepy.Client(
+        consumer_key=TWITTER_API_KEY,
+        consumer_secret=TWITTER_API_SECRET,
+        access_token=request.access_token,
+        access_token_secret=request.access_token_secret
+    )
+    # --- Quick sanity check ---
+    #print("Using tokens:", request.access_token, request.access_token_secret)
+    me = client.get_me(user_auth=True)
+    print("Current user:", me.data)
+
+    resp = client.create_tweet(text=request.tweet)
+    print(f"Successfully posted tweet! Tweet ID: {resp.data['id']}")
+    return True
 
 if __name__ == "__main__":
     import uvicorn
