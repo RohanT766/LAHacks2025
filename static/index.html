@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>meow</title>
+  <title>Task Manager</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <nav>
@@ -11,23 +13,34 @@
     <button id="show-signup">Sign Up</button>
   </nav>
 
+  <h1>Task Manager</h1>
+
   <!-- Login Form -->
   <section id="login-section" hidden>
-    <h2>Login</h2>
+    <h2>Login to Your Account</h2>
     <form id="login-form">
-      <input name="email" type="email" placeholder="Email" required />
+      <input name="email" type="email" placeholder="Email Address" required />
       <input name="password" type="password" placeholder="Password" required />
       <button type="submit">Login</button>
     </form>
     <pre id="login-result"></pre>
   </section>
 
+  <!-- Sign Up Form -->
+  <section id="signup-section">
+    <h2>Create an Account</h2>
+    <form id="signup-form">
+      <input name="email" type="email" placeholder="Email Address" required />
+      <input name="password" type="password" placeholder="Password" required />
+      <input name="nickname" type="text" placeholder="Nickname" required />
+      <button type="submit">Create Account</button>
+    </form>
+    <pre id="signup-result"></pre>
+  </section>
 
-  <h1>meow</h1>
-
-  <!-- 1) Add a Charity -->
+  <!-- Add Charity Section -->
   <section>
-    <h2>1) Add a Charity</h2>
+    <h2>Add a Charity</h2>
     <form id="charity-form">
       <input name="name" placeholder="Charity Name" required />
       <input name="stripe_account_id" placeholder="Stripe Account ID" required />
@@ -36,39 +49,28 @@
     <pre id="charity-result"></pre>
   </section>
 
-  <section id="signup-section">
-    <h2>Sign Up</h2>
-    <form id="signup-form">
-      <input name="email" type="email" placeholder="Email" required />
-      <input name="password" type="password" placeholder="Password" required />
-      <input name="nickname" type="text" placeholder="Nickname" required />
-      <button type="submit">Sign Up</button>
-    </form>
-    <pre id="signup-result"></pre>
-  </section>
-
-  <!-- 3) Add a Routine -->
+  <!-- Add Task Section -->
   <section>
-    <h2>3) Add a Routine</h2>
+    <h2>Add a Task</h2>
     <form id="routine-form">
       <input name="user_id" placeholder="User ID" required />
-      <input name="description" placeholder="Routine Description" required />
-      <input name="frequency" placeholder="Frequency (e.g. daily)" required />
+      <input name="description" placeholder="Task Description" required />
+      <input name="frequency" placeholder="Frequency (e.g., Daily, Weekly)" required />
       <input name="charity_id" placeholder="Charity ID" required />
       <input name="donation_amount" type="number" placeholder="Donation Amount (cents)" required />
-      <button type="submit">Add Routine</button>
+      <button type="submit">Add Task</button>
     </form>
     <pre id="routine-result"></pre>
   </section>
 
-  <!-- 4) Report a Completed Routine -->
+  <!-- Report Task Section -->
   <section>
-    <h2>4) Report Routine</h2>
+    <h2>Report Task Completion</h2>
     <form id="report-form">
-      <input name="routine_id" placeholder="Routine ID" required />
+      <input name="routine_id" placeholder="Task ID" required />
       <label>
         <input name="did_task" type="checkbox" />
-        I did this routine
+        I have completed this task
       </label>
       <button type="submit">Submit Report</button>
     </form>
@@ -85,13 +87,15 @@
         });
         const json = await res.json();
         resultEl.textContent = JSON.stringify(json, null, 2);
+        resultEl.className = res.ok ? 'success' : 'error';
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
+        resultEl.className = 'error';
       }
     }
   
     document.addEventListener("DOMContentLoaded", () => {
-      // auth toggles…
+      // Auth toggles
       document.getElementById("show-login").onclick = () => {
         document.getElementById("login-section").hidden = false;
         document.getElementById("signup-section").hidden = true;
@@ -101,7 +105,7 @@
         document.getElementById("login-section").hidden = true;
       };
   
-      // login
+      // Login form
       const loginForm = document.getElementById("login-form");
       loginForm?.addEventListener("submit", e => {
         e.preventDefault();
@@ -112,55 +116,54 @@
         }, document.getElementById("login-result"));
       });
   
-      // signup
+      // Signup form
       const signupForm = document.getElementById("signup-form");
       signupForm?.addEventListener("submit", e => {
         e.preventDefault();
         const f = e.target;
         postJSON("/register", {
-          email:    f.email.value,
+          email: f.email.value,
           password: f.password.value,
           nickname: f.nickname.value
         }, document.getElementById("signup-result"));
       });
   
-      // charity
+      // Charity form
       const charityForm = document.getElementById("charity-form");
       charityForm?.addEventListener("submit", e => {
         e.preventDefault();
         const f = e.target;
         postJSON("/charity", {
-          name:               f.name.value,
-          stripe_account_id:  f.stripe_account_id.value
+          name: f.name.value,
+          stripe_account_id: f.stripe_account_id.value
         }, document.getElementById("charity-result"));
       });
   
-      // **routine**
+      // Task form
       const routineForm = document.getElementById("routine-form");
       routineForm?.addEventListener("submit", e => {
         e.preventDefault();
         const f = e.target;
         postJSON("/routine", {
-          user_id:         f.user_id.value,
-          description:     f.description.value,
-          frequency:       f.frequency.value,
-          charity_id:      f.charity_id.value,
+          user_id: f.user_id.value,
+          description: f.description.value,
+          frequency: f.frequency.value,
+          charity_id: f.charity_id.value,
           donation_amount: Number(f.donation_amount.value)
         }, document.getElementById("routine-result"));
       });
   
-      // report
+      // Report form
       const reportForm = document.getElementById("report-form");
       reportForm?.addEventListener("submit", e => {
         e.preventDefault();
         const f = e.target;
         postJSON("/report-task", {
           routine_id: f.routine_id.value,
-          did_task:   f.did_task.checked
+          did_task: f.did_task.checked
         }, document.getElementById("report-result"));
       });
     });
   </script>
-  
 </body>
 </html>

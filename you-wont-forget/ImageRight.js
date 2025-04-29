@@ -4,7 +4,7 @@ import styles from './styles'; // shared styling
 
 
 export default function ImageRight({ route, navigation }) {
-  const { photoUri } = route.params;
+  const { photoUri, user } = route.params;
 
   return (
     <View style={styles.container}>
@@ -20,14 +20,24 @@ export default function ImageRight({ route, navigation }) {
 
         <Pressable
           style={styles.fixedButton}
-          onPress={() => navigation.reset({ routes: [{ name: 'Home' }] })}
+          onPress={() => navigation.reset({ 
+            routes: [{ 
+              name: 'Home',
+              params: { user: user }
+            }] 
+          })}
         >
           <Text style={styles.buttonText}>Return to tasks</Text>
         </Pressable>
 
         <Pressable
           style={[styles.fixedButton, { bottom: 52, backgroundColor: 'transparent' }]}
-          onPress={() => navigation.reset({ routes: [{ name: 'Photo' }] })}
+          onPress={() => navigation.reset({ 
+            routes: [{ 
+              name: 'Photo',
+              params: { user: user }
+            }] 
+          })}
         >
           <Text style={{ fontSize: 16, color: 'black' }}>Retake photo</Text>
         </Pressable>

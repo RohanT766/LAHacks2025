@@ -4,7 +4,7 @@ import styles from './styles'; // shared styling
 
 
 export default function ImageWrong({ route, navigation }) {
-  const { photoUri } = route.params;
+  const { photoUri, user } = route.params;
 
   return (
     <View style={styles.container}>
@@ -20,7 +20,12 @@ export default function ImageWrong({ route, navigation }) {
 
         <Pressable
           style={styles.fixedButton}
-          onPress={() => navigation.reset({ routes: [{ name: 'Home' }] })}
+          onPress={() => navigation.reset({ 
+            routes: [{ 
+              name: 'Home',
+              params: { user: user }
+            }] 
+          })}
         >
           <Text style={styles.buttonText}>Return to tasks</Text>
         </Pressable>

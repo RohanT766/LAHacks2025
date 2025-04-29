@@ -208,7 +208,7 @@ export default function Home({ navigation, route }) {
 
       // Pick an image from the gallery
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.5,
@@ -241,10 +241,16 @@ export default function Home({ navigation, route }) {
         // Remove task from local state
         setTasks(prev => prev.filter(t => t.id !== task.id));
         // Navigate to success screen
-        navigation.navigate('ImageRight', { photoUri: result.assets[0].uri });
+        navigation.navigate('ImageRight', { 
+          photoUri: result.assets[0].uri,
+          user: route.params?.user 
+        });
       } else {
         // Navigate to failure screen
-        navigation.navigate('ImageWrong', { photoUri: result.assets[0].uri });
+        navigation.navigate('ImageWrong', { 
+          photoUri: result.assets[0].uri,
+          user: route.params?.user 
+        });
       }
     } catch (error) {
       console.error('Error verifying task:', error);

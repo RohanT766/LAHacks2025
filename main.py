@@ -2,6 +2,7 @@ import os
 import io
 import base64
 import tempfile
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -20,6 +21,9 @@ import tweepy  # type: ignore[import]
 from PIL import Image
 import numpy as np
 import cv2
+from google.generativeai import GenerativeModel, configure
+import traceback
+from image_validator import validate_task_image
 
 # Load environment
 load_dotenv()
@@ -28,12 +32,17 @@ TWITTER_API_KEY      = os.getenv("TWITTER_API_KEY")
 TWITTER_API_SECRET   = os.getenv("TWITTER_API_SECRET")
 TWITTER_CALLBACK_URL = os.getenv("TWITTER_CALLBACK_URL")
 SESSION_SECRET       = os.getenv("SESSION_SECRET")
+GEMINI_API_KEY       = os.getenv("GEMINI_API_KEY")
+
+# Configure Gemini
+configure(api_key=GEMINI_API_KEY)
+gemini = GenerativeModel("gemini-1.5-flash")
 
 # MongoDB
 MONGO_URL    = os.getenv("MONGO_URL")
 MONGO_DBNAME = os.getenv("MONGO_DB", "lahacks25")
-client       = MongoClient(MONGO_URL, tls=True, tlsCAFile=certifi.where())
-db           = client[MONGO_DBNAME]
+client: MongoClient[Any] = MongoClient(MONGO_URL, tls=True, tlsCAFile=certifi.where())
+db: Any = client[MONGO_DBNAME]
 
 # Ensure indexes
 db.users.create_index([("email", ASCENDING)], unique=True)
@@ -411,12 +420,17 @@ def get_user_tasks(user_id: str):
 @app.post("/verify-task-photo")
 async def verify_task_photo(v: PhotoVerification):
     try:
+        print("\n=== Starting Task Photo Verification ===")
+        print(f"Received request - user_id: {v.user_id}, task_id: {v.task_id}")
+        
         # Validate user and task
         if not ObjectId.is_valid(v.user_id) or not ObjectId.is_valid(v.task_id):
+            print(f"Invalid IDs - user_id: {v.user_id}, task_id: {v.task_id}")
             raise HTTPException(status_code=400, detail="Invalid user_id or task_id")
         
         user = db.users.find_one({"_id": ObjectId(v.user_id)})
         if not user:
+            print(f"User not found: {v.user_id}")
             raise HTTPException(status_code=404, detail="User not found")
         
         # Find the task in the user's tasks array
@@ -427,41 +441,84 @@ async def verify_task_photo(v: PhotoVerification):
                 break
         
         if not task:
+            print(f"Task not found: {v.task_id}")
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Decode base64 image
+        print(f"Found task: {task.get('description')}")
+        print("Validating image with Gemini...")
+
         try:
-            header, b64 = v.photo_data.split(",", 1)
-            data = base64.b64decode(b64)
-        except Exception:
-            raise HTTPException(400, "Invalid photo_data format")
+            # Validate the image using Gemini
+            is_valid = validate_task_image(task.get('description', 'the assigned task'), v.photo_data)
+            print(f"Image validation result: {'valid' if is_valid else 'invalid'}")
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
-            tf.write(data)
-            temp_path = tf.name
+            if is_valid:
+                try:
+                    print("Updating task status in database...")
+                    print(f"Updating task {v.task_id} for user {v.user_id}")
+                    
+                    # First verify the task exists
+                    task_exists = db.users.find_one({
+                        "_id": ObjectId(v.user_id),
+                        "tasks._id": ObjectId(v.task_id)
+                    })
+                    
+                    if not task_exists:
+                        print(f"Task {v.task_id} not found in user's tasks")
+                        raise HTTPException(404, "Task not found in user's tasks")
+                    
+                    # Update the task status
+                    result = db.users.update_one(
+                        {"_id": ObjectId(v.user_id)},
+                        {"$set": {"tasks.$[elem].did_task": True}},
+                        array_filters=[{"elem._id": ObjectId(v.task_id)}]
+                    )
+                    
+                    if result.matched_count == 0:
+                        print(f"No matching document found for user {v.user_id}")
+                        raise HTTPException(404, "User document not found")
+                        
+                    if result.modified_count == 0:
+                        print(f"Task {v.task_id} was not modified")
+                        raise HTTPException(500, "Failed to update task status")
+                    
+                    print(f"Successfully updated task {v.task_id} for user {v.user_id}")
+                    return {"success": True, "message": "Task verified and completed"}
+                    
+                except HTTPException as he:
+                    print(f"HTTP Exception during task update: {he.detail}")
+                    raise he
+                except Exception as e:
+                    print(f"Error updating task status: {str(e)}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    raise HTTPException(500, f"Database error: {str(e)}")
+            else:
+                print("Image verification failed")
+                return {"success": False, "message": "Photo verification failed - image does not clearly show task completion"}
 
-        # For now, always return True for testing
-        is_valid = True
-
-        if is_valid:
-            # Update task status in user's document
-            result = db.users.update_one(
-                {"_id": ObjectId(v.user_id)},
-                {"$set": {"tasks.$[elem].did_task": True}},
-                array_filters=[{"elem._id": ObjectId(v.task_id)}]
-            )
-            
-            if result.modified_count == 0:
-                raise HTTPException(status_code=500, detail="Failed to update task status")
-            
-            return {"success": True, "message": "Task verified and completed"}
-        else:
-            return {"success": False, "message": "Photo verification failed"}
+        except HTTPException as he:
+            print(f"HTTP Exception in image validation: {he.detail}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise he
+        except Exception as e:
+            print(f"Unexpected error in image validation: {str(e)}")
+            print(f"Error type: {type(e)}")
+            print(f"Error details: {e.__dict__ if hasattr(e, '__dict__') else 'No details available'}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
     except HTTPException as he:
+        print(f"HTTP Exception in verify-task-photo: {he.detail}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise he
     except Exception as e:
+        print(f"Unexpected error in verify-task-photo: {str(e)}")
+        print(f"Error type: {type(e)}")
+        print(f"Error details: {e.__dict__ if hasattr(e, '__dict__') else 'No details available'}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    finally:
+        print("=== Task Photo Verification Complete ===\n")
 
 @app.post("/update-party")
 def update_party(update: PartyUpdate):
